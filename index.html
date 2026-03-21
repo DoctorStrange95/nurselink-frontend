@@ -3798,56 +3798,57 @@ function checkExistingPatient(phone) {
   }
 }
 
-function saveRegistration() {
-  const fname = document.getElementById('reg-fname').value.trim();
-  const lname = document.getElementById('reg-lname').value.trim();
-  const age = document.getElementById('reg-age').value;
-  if (!fname || !lname || !age) { alert('First name, last name and age are required.'); return; }
-  const uhid = generateUHID();
-  const pid = 'P'+Date.now();
-  const patient = {
-    id:pid, name:`${fname} ${lname}`, age:parseInt(age),
-    gender:document.getElementById('reg-gender').value,
-    phone:document.getElementById('reg-phone').value.trim(),
-    ehrId:uhid, diagnosis:'', icd:'', bed:'',
-    doctorId:'', nurseId:'',
-    admissionType:'OPD', admitTime:now(), status:'OPD',
-    chiefComplaint:document.getElementById('reg-cc').value.trim(),
-    allergies:'None Known', bloodGroup:document.getElementById('reg-bg').value,
-    height:document.getElementById('reg-height').value,
-    weight:document.getElementById('reg-weight').value,
-    bmi:document.getElementById('reg-bmi').value,
-  };
-  S.patients.unshift(patient);
-  S.vitals[pid] = [];
-  S.prescriptions[pid] = [];
-  S.labOrders[pid] = [];
-  S.consultNotes[pid] = [];
-  S.nursingNotes[pid] = [];
-  S.chat[pid] = [];
-  // Add initial vitals if entered
-  const bps = parseInt(document.getElementById('reg-bps').value);
-  const bpd = parseInt(document.getElementById('reg-bpd').value);
-  const pulse = parseInt(document.getElementById('reg-pulse').value);
-  const spo2 = parseInt(document.getElementById('reg-spo2').value);
-  if (bps && bpd && pulse) {
-    S.vitals[pid].push({ id:'V'+Date.now(), time:ts(), bpSys:bps, bpDia:bpd, pulse, spo2:spo2||98, temp:37.0, rr:18, gcs:15, uo:40, glucose:100, drain:0, pain:0, notes:'Registration vitals', nurse:getCurrentStaffName() });
-  }
-  // Add to OPD queue
-  if (!S.opdQueue) S.opdQueue = [];
-  S.opdQueue.unshift({ pid, name:patient.name, uhid, cc:patient.chiefComplaint, time:ts(), status:'Waiting' });
-  showToast(`UHID generated: ${uhid}`);
-  showModal(`<div class="modal"><div class="modal-header"><h2>✅ Patient Registered</h2><button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="modal-body" style="text-align:center">
-      <div style="font-size:32px;font-weight:800;color:var(--teal);letter-spacing:2px">${uhid}</div>
-      <div class="text-muted mt-2">Share this UHID with the patient</div>
-      <div style="margin-top:16px;font-size:14px"><b>${patient.name}</b> | ${patient.age} yrs | ${patient.gender==='M'?'Male':patient.gender==='F'?'Female':'Other'}</div>
-    </div>
-    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal();setNav('queue')">Go to Queue</button></div>
-  </div>`);
-  save();
-}
+async function saveRegistration() {
+    // 1. Grab the values from the form
+    const firstName = document.getElementById('regFirstName').value;
+    const lastName = document.getElementById('regLastName').value;
+    const age = document.getElementById('regAge').value;
+    
+    // 2. Stop if they didn't fill out the basics
+    if (!firstName || !lastName || !age) {
+        alert("Please fill in all required fields (First Name, Last Name, Age).");
+        return;
+    }
 
+    // 3. Package the data for your backend
+    const payload = {
+        name: `${firstName} ${lastName}`,
+        age: parseInt(age),
+        gender: document.getElementById('regGender').value || 'Unknown',
+        phone: document.getElementById('regPhone').value || 'N/A',
+        chief_complaint: document.getElementById('regComplaint').value || 'None provided',
+        diagnosis: 'Pending Evaluation', 
+        icd_code: 'TBD',
+        allergies: 'NKDA', 
+        blood_group: 'Unknown',
+        status: 'OPD', 
+        diag_type: 'Provisional'
+    };
+
+    try {
+        // 4. Send the package to your backend database
+        const response = await apiPost('/patients', payload);
+
+        // 5. If it worked, show success!
+        if (response) {
+            console.log("Patient saved:", response);
+            alert('Patient successfully registered in the database!');
+            
+            // Close the modal and reset the form
+            closeModal('registrationModal');
+            document.getElementById('regFirstName').value = '';
+            document.getElementById('regLastName').value = '';
+            document.getElementById('regAge').value = '';
+            // (You can add your local UI update code here later if needed)
+        } else {
+            alert("Error: Could not save patient. Check your backend.");
+        }
+
+    } catch (error) {
+        console.error("Error:", error);
+        alert("Failed to connect. Is your server running?");
+    }
+}
 // ============================================================
 // OPD QUEUE (Counter / Doctor)
 // ============================================================
