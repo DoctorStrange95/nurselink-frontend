@@ -1055,32 +1055,42 @@ function getDefaultView() {
 // ============================================================
 function renderPatientList() {
   const role = S.currentRole;
-  let pts = S.patients;
+  let allPts = S.patients;
   if (role === 'Nurse') {
     const myName = getCurrentStaffName();
-    pts = pts.filter(p => {
-      const nurse = S.staff.find(s => s.id === p.nurseId);
-      return nurse && nurse.name === myName;
-    });
+    allPts = allPts.filter(p => { const n = S.staff.find(s=>s.id===p.nurseId); return n&&n.name===myName; });
   } else if (role === 'Doctor') {
     const myName = getCurrentStaffName();
-    pts = pts.filter(p => {
-      const doc = S.staff.find(s => s.id === p.doctorId);
-      return doc && doc.name === myName;
-    });
+    allPts = allPts.filter(p => { const d = S.staff.find(s=>s.id===p.doctorId); return d&&d.name===myName; });
   }
+
+  const ipdPts = allPts.filter(p=>p.status==='Active');
+  const opdPts = allPts.filter(p=>p.status==='OPD');
+  const activeList = S._patientListTab || 'ipd';
 
   const main = document.getElementById('main');
   main.innerHTML = `
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-3">
       <div>
-        <div class="section-title">${role === 'Nurse' ? 'My Assigned Patients' : role === 'Doctor' ? 'My Patients' : 'All Patients'}</div>
-        <div class="section-sub">${pts.length} patient${pts.length!==1?'s':''} active</div>
+        <div class="section-title">${role==='Nurse'?'My Patients':role==='Doctor'?'My Patients':'All Patients'}</div>
       </div>
-      ${role === 'Doctor' ? `<button class="btn btn-primary" onclick="setNav('admit')">➕ New Patient</button>` : ''}
+      ${role==='Doctor'?`<button class="btn btn-primary" onclick="setNav('admit')">➕ New Patient</button>`:''}
     </div>
+
+    <div class="tabs" style="margin-bottom:16px">
+      <div class="tab ${activeList==='ipd'?'active':''}" onclick="S._patientListTab='ipd';save()">
+        🛏 IPD Inpatients <span class="badge badge-teal" style="margin-left:6px">${ipdPts.length}</span>
+      </div>
+      <div class="tab ${activeList==='opd'?'active':''}" onclick="S._patientListTab='opd';save()">
+        🩺 OPD Consultations <span class="badge badge-indigo" style="margin-left:6px">${opdPts.length}</span>
+      </div>
+    </div>
+
     <div class="patient-grid">
-      ${pts.map(p => renderPatientCard(p)).join('')}
+      ${activeList==='ipd'
+        ? (ipdPts.length===0 ? '<div class="text-muted">No active IPD patients.</div>' : ipdPts.map(p=>renderPatientCard(p)).join(''))
+        : (opdPts.length===0 ? '<div class="text-muted">No OPD consultations today. <button class="btn btn-primary btn-sm" onclick="setNav(\'admit\')">+ New Patient</button></div>' : opdPts.map(p=>renderPatientCard(p)).join(''))
+      }
     </div>
   `;
 }
@@ -1090,37 +1100,51 @@ function renderPatientCard(p) {
   const status = vitalStatus(vitals);
   const alerts = S.alerts.filter(a => a.patientId === p.id && !a.acked);
   const doc = S.staff.find(s => s.id === p.doctorId);
-  const nurse = S.staff.find(s => s.id === p.nurseId);
+  const isOPD = p.status === 'OPD';
+  // LOS for IPD
+  let los = '';
+  if (!isOPD && p.admitTime) {
+    try {
+      const parts = p.admitTime.split(' ');
+      const dateParts = parts[0].split('/');
+      const d = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
+      const days = Math.max(0, Math.round((Date.now()-d.getTime())/(1000*60*60*24)));
+      los = `<span class="badge badge-indigo" style="font-size:10px">LOS ${days}d</span>`;
+    } catch(e) {}
+  }
   return `
     <div class="patient-card" onclick="openPatient('${p.id}')">
-      <div class="patient-card-header" style="background:${p.status==='OPD'?'var(--indigo)':status==='critical'?'var(--red)':status==='warning'?'var(--warn)':'var(--navy)'}">
+      <div class="patient-card-header" style="background:${isOPD?'var(--indigo)':status==='critical'?'var(--red)':status==='warning'?'var(--warn)':'var(--navy)'}">
         <div class="flex items-center justify-between">
           <div>
             <div class="pt-name">${p.name}</div>
-            <div class="pt-meta">${p.age}${p.gender} | ${p.bed} | ${p.ehrId}</div>
+            <div class="pt-meta">${p.age}${p.gender} | ${isOPD?'OPD':'Bed '+p.bed} | ${p.ehrId}</div>
           </div>
-          <div>
-            <span class="badge ${p.status==='OPD'?'badge-indigo':'badge-teal'}" style="margin-bottom:4px">${p.status==='OPD'?'OPD':'IPD'}</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+            <span class="badge ${isOPD?'badge-indigo':'badge-teal'}">${isOPD?'OPD':'IPD'}</span>
+            ${los}
             ${alerts.length > 0 ? `<span class="badge badge-red">⚠ ${alerts.length}</span>` : ''}
           </div>
         </div>
       </div>
       <div class="patient-card-body">
-        <div class="pt-info-row"><span>Diagnosis</span><span style="max-width:160px;text-align:right;font-size:11px">${p.diagnosis}</span></div>
+        <div class="pt-info-row"><span>Diagnosis</span><span style="max-width:160px;text-align:right;font-size:11px">${p.diagnosis||'—'}</span></div>
         <div class="pt-info-row"><span>Doctor</span><span>${doc?.name || '—'}</span></div>
-        <div class="pt-info-row"><span>Nurse</span><span>${nurse?.name || '—'}</span></div>
-        <div class="pt-info-row"><span>Admitted</span><span>${p.admitTime}</span></div>
-        ${vitals ? `
+        <div class="pt-info-row"><span>${isOPD?'Visit':'Admitted'}</span><span>${p.admitTime}</span></div>
+        ${!isOPD && vitals ? `
           <div class="mt-2 flex gap-2" style="flex-wrap:wrap">
             <span class="vital-pill ${vitals.bpSys>180?'critical':vitals.bpSys>160?'warn':''}">BP ${vitals.bpSys}/${vitals.bpDia}</span>
             <span class="vital-pill ${vitals.spo2<92?'critical':vitals.spo2<95?'warn':''}">SpO₂ ${vitals.spo2}%</span>
             <span class="vital-pill ${vitals.pulse>130||vitals.pulse<50?'critical':vitals.pulse>110?'warn':''}">♥ ${vitals.pulse}</span>
             <span class="vital-pill ${vitals.temp>39.5?'critical':vitals.temp>38.5?'warn':''}">🌡 ${vitals.temp}°C</span>
           </div>
-        ` : '<div class="text-muted mt-2" style="font-size:11px">No vitals recorded yet</div>'}
+        ` : isOPD ? `<div class="text-muted mt-2" style="font-size:11px">${p.chiefComplaint||'No complaint noted'}</div>` : '<div class="text-muted mt-2" style="font-size:11px">No vitals recorded yet</div>'}
         <div class="flex gap-2 mt-2" style="margin-top:10px">
-          <button class="btn btn-danger btn-sm" style="flex:1" onclick="event.stopPropagation();triggerSOS('${p.id}')">🚨 SOS</button>
-          <button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">View →</button>
+          ${isOPD
+            ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>`
+            : `<button class="btn btn-danger btn-sm" style="flex:1" onclick="event.stopPropagation();triggerSOS('${p.id}')">🚨 SOS</button>
+               <button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">View →</button>`
+          }
         </div>
       </div>
     </div>
@@ -1172,13 +1196,413 @@ function renderPatientDetail(id) {
   `;
 }
 
+function renderPatientDetail(id) {
+  const p = S.patients.find(x => x.id === id);
+  if (!p) return;
+  if (p.status === 'OPD') {
+    renderOPDConsultation(id);
+  } else {
+    renderIPDDetail(id);
+  }
+}
+
+// ============================================================
+// OPD CONSULTATION SCREEN (4-tab: History | Examine | Prescribe | Actions)
+// ============================================================
+function renderOPDConsultation(id) {
+  const p = S.patients.find(x => x.id === id);
+  if (!p) return;
+  const tab = S.activeTab[id] || 'prescribe';
+  const main = document.getElementById('main');
+  // Start consultation timer
+  if (!window._consultTimers) window._consultTimers = {};
+  if (!window._consultTimers[id]) window._consultTimers[id] = Date.now();
+
+  const elapsed = Math.round((Date.now() - window._consultTimers[id]) / 60000);
+
+  main.innerHTML = `
+    <div class="flex items-center gap-3 mb-3">
+      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;save()">← Back</button>
+      <div style="flex:1">
+        <span class="fw-600" style="font-size:16px">${p.name}</span>
+        <span class="text-muted" style="margin-left:8px">${p.age}${p.gender==='M'?'M':'F'} | ${p.ehrId}</span>
+        <span class="badge badge-indigo" style="margin-left:8px">OPD</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-muted);background:var(--panel);padding:4px 10px;border-radius:20px">⏱ ${elapsed}m</div>
+    </div>
+
+    <div class="tabs">
+      ${['history','examine','prescribe','actions'].map(t=>`
+        <div class="tab ${tab===t?'active':''}" onclick="setTab('${id}','${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</div>
+      `).join('')}
+    </div>
+
+    <div id="tab-content">
+      ${tab==='history' ? renderOPDHistoryTab(id,p) :
+        tab==='examine' ? renderOPDExamineTab(id,p) :
+        tab==='prescribe' ? renderOPDPrescribeTab(id,p) :
+        renderOPDActionsTab(id,p)}
+    </div>
+  `;
+}
+
+function renderOPDHistoryTab(id, p) {
+  const notes = S.consultNotes[id] || [];
+  const prevPts = S.patients.filter(x=>x.phone===p.phone && x.id!==id);
+  return `
+    <div class="section-sub mb-3">Previous consultations for this patient</div>
+    ${notes.length===0 && prevPts.length===0 ? '<div class="card"><div class="card-body text-muted">No previous history found.</div></div>' : ''}
+    ${notes.map(n=>`
+      <div class="card mb-3" style="border-left:3px solid var(--teal)">
+        <div class="card-header"><h3>${n.time}</h3><span class="text-muted">${n.by}</span></div>
+        <div class="card-body">
+          ${n.subjective?`<div class="mb-2"><div class="form-label">Subjective</div><div style="font-size:13px">${n.subjective}</div></div>`:''}
+          ${n.assessment?`<div class="mb-2"><div class="form-label">Assessment</div><div style="font-size:13px;font-weight:600">${n.assessment}</div></div>`:''}
+          ${n.plan?`<div><div class="form-label">Plan</div><div style="font-size:13px">${n.plan}</div></div>`:''}
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderOPDExamineTab(id, p) {
+  return `
+    <div class="card">
+      <div class="card-header"><h3>Examination Findings</h3></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Chief Complaint</label>
+          <textarea class="form-control" id="exam-cc" rows="2" placeholder="Presenting complaint...">${p.chiefComplaint||''}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Clinical Examination Notes</label>
+          <textarea class="form-control" id="exam-notes" rows="4" placeholder="On examination: BP, pulse, chest, abdomen findings..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Investigation Results (manual entry)</label>
+          <textarea class="form-control" id="exam-inv" rows="3" placeholder="e.g. Hb 12.5 g/dL, WBC 9800, Blood Sugar 142 mg/dL..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Diagnosis *</label>
+            <input class="form-control" id="exam-diag" value="${p.diagnosis||''}" placeholder="Primary diagnosis">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ICD-10 Code</label>
+            <input class="form-control" id="exam-icd" value="${p.icd||''}" placeholder="e.g. J06.9">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Diagnosis Type</label>
+          <div class="flex gap-2">
+            ${['Working','Provisional','Final'].map(t=>`
+              <button id="diag-type-${t}" onclick="setDiagType('${t}')" class="btn btn-sm ${(p.diagType||'Provisional')===t?'btn-primary':'btn-outline'}">${t}</button>
+            `).join('')}
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveExamination('${id}')">Save & Go to Prescribe →</button>
+      </div>
+    </div>
+  `;
+}
+
+function setDiagType(type) {
+  ['Working','Provisional','Final'].forEach(t=>{
+    const btn = document.getElementById('diag-type-'+t);
+    if(btn) btn.className = 'btn btn-sm ' + (t===type?'btn-primary':'btn-outline');
+  });
+  window._diagType = type;
+}
+
+function saveExamination(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  p.chiefComplaint = document.getElementById('exam-cc')?.value || p.chiefComplaint;
+  p.diagnosis = document.getElementById('exam-diag')?.value || p.diagnosis;
+  p.icd = document.getElementById('exam-icd')?.value || p.icd;
+  p.diagType = window._diagType || p.diagType || 'Provisional';
+  p.examNotes = document.getElementById('exam-notes')?.value || '';
+  p.invResults = document.getElementById('exam-inv')?.value || '';
+  setTab(id, 'prescribe');
+}
+
+function renderOPDPrescribeTab(id, p) {
+  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
+  return `
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3>💊 Prescription</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddMedModal('${id}')">+ Add Drug</button>
+      </div>
+      <div class="card-body" ${rxList.length===0?'':'style="padding:0"'}>
+        ${rxList.length===0 ? '<div class="text-muted">No drugs added yet. Click + Add Drug.</div>' :
+          `<table class="data-table">
+            <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Freq</th><th>Duration</th><th></th></tr></thead>
+            <tbody>
+              ${rxList.map(r=>`<tr>
+                <td class="fw-600">${r.drug}</td>
+                <td class="mono">${r.dose}</td>
+                <td>${r.route}</td>
+                <td>${r.freq}</td>
+                <td>${r.duration}</td>
+                <td><button onclick="discontinueMed('${id}','${r.id}')" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`
+        }
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header"><h3>🔬 Investigations</h3><button class="btn btn-outline btn-sm" onclick="showOrderLabModal('${id}')">+ Order</button></div>
+      <div class="card-body">
+        ${(S.labOrders[id]||[]).length===0 ? '<div class="text-muted">No investigations ordered.</div>' :
+          (S.labOrders[id]||[]).map(l=>`<div class="flex items-center justify-between mb-2">
+            <span style="font-size:13px">${l.test}</span>
+            <span class="badge ${l.priority==='STAT'?'badge-red':l.priority==='Urgent'?'badge-amber':'badge-teal'}">${l.priority}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div style="position:sticky;bottom:16px;z-index:10">
+      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="generateRx('${id}')">
+        📄 Generate Prescription (Rx)
+      </button>
+    </div>
+  `;
+}
+
+function renderOPDActionsTab(id, p) {
+  return `
+    <div class="card mb-3">
+      <div class="card-header"><h3>📥 Admit to IPD</h3></div>
+      <div class="card-body">
+        <div class="text-muted mb-3" style="font-size:13px">Convert this OPD patient to an IPD admission. Select a bed and assign nursing staff.</div>
+        <button class="btn btn-primary" onclick="convertOPDtoIPD('${id}')">🛏 Admit to IPD Ward</button>
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header"><h3>↗ Refer to Doctor</h3></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Refer to (Doctor / Speciality)</label>
+          <input class="form-control" id="refer-to" placeholder="e.g. Dr. Sunita Rao / Nephrology">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reason for Referral</label>
+          <textarea class="form-control" id="refer-reason" rows="2" placeholder="Clinical reason for referral..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Urgency</label>
+          <select class="form-control" id="refer-urgency"><option>Routine</option><option>Urgent</option><option>Emergency</option></select>
+        </div>
+        <button class="btn btn-outline" onclick="saveReferral('${id}')">Send Referral</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>💰 Consultation Fee</h3></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Fee (₹) — internal record only, not printed on Rx</label>
+          <input class="form-control" id="consult-fee" type="number" placeholder="500" value="${p.consultFee||''}">
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="saveConsultFee('${id}')">Save Fee</button>
+      </div>
+    </div>
+  `;
+}
+
+function convertOPDtoIPD(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  // Switch to admit form pre-filled and set mode to IPD
+  S.activePatientId = null;
+  setNav('admit');
+  setTimeout(()=>{
+    const toggle = document.getElementById('admit-mode-toggle');
+    if (toggle) { toggle.checked = true; toggleAdmitMode(true); }
+    const nameEl = document.getElementById('ad-name');
+    if (nameEl) nameEl.value = p.name;
+    const ageEl = document.getElementById('ad-age');
+    if (ageEl) ageEl.value = p.age;
+    const ccEl = document.getElementById('ad-cc');
+    if (ccEl) ccEl.value = p.chiefComplaint||'';
+    const diagEl = document.getElementById('ad-diag');
+    if (diagEl) diagEl.value = p.diagnosis||'';
+    showToast('Pre-filled from OPD record — select bed to complete IPD admission');
+  }, 200);
+}
+
+function saveReferral(id) {
+  const to = document.getElementById('refer-to')?.value.trim();
+  const reason = document.getElementById('refer-reason')?.value.trim();
+  const urgency = document.getElementById('refer-urgency')?.value;
+  if (!to) { alert('Please enter referral destination.'); return; }
+  const p = S.patients.find(x=>x.id===id);
+  if (!S.referrals) S.referrals = [];
+  S.referrals.unshift({ id:'R'+Date.now(), pid:id, patientName:p?.name, to, reason, urgency, time:now(), by:getCurrentStaffName() });
+  showToast(`Referral sent to ${to}`);
+  save();
+}
+
+function saveConsultFee(id) {
+  const fee = document.getElementById('consult-fee')?.value;
+  const p = S.patients.find(x=>x.id===id);
+  if (p) { p.consultFee = fee; save(); showToast('Consultation fee saved (internal record)'); }
+}
+
+// ============================================================
+// PRESCRIPTION GENERATOR
+// ============================================================
+function generateRx(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
+  const doc = S.staff.find(s=>s.id===p.doctorId) || S.staff.find(s=>s.role==='Doctor');
+  const elapsed = window._consultTimers?.[id] ? Math.round((Date.now()-window._consultTimers[id])/60000) : 0;
+  // Record consultation time
+  p.lastConsultDuration = elapsed;
+
+  showModal(`<div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2>📄 Prescription Preview</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="rx-printable" style="font-family:'DM Sans',sans-serif">
+      <!-- Doctor Header -->
+      <div style="border-bottom:2px solid var(--navy);padding-bottom:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:20px;font-weight:800;color:var(--navy)">${doc?.name||getCurrentStaffName()}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${doc?.dept||'General Medicine'} | Reg. No: ${doc?.empId||'MCI-XXXXX'}</div>
+            <div style="font-size:12px;color:var(--text-muted)">NurseLink Clinic | ${now()}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)">Rx</div>
+            <div style="font-size:24px;font-weight:900;color:var(--teal)">℞</div>
+          </div>
+        </div>
+      </div>
+      <!-- Patient Block -->
+      <div style="background:var(--panel);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+        <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Patient</div><div class="fw-600">${p.name}</div></div>
+        <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Age/Sex</div><div>${p.age}Y / ${p.gender==='M'?'M':'F'}</div></div>
+        <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">UHID</div><div style="font-family:var(--mono)">${p.ehrId}</div></div>
+        ${p.diagnosis?`<div style="grid-column:1/-1"><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Diagnosis (${p.diagType||'Provisional'})</div><div class="fw-600">${p.diagnosis} ${p.icd?'<span style="font-family:var(--mono);color:var(--text-muted);font-size:11px">'+p.icd+'</span>':''}</div></div>`:''}
+        ${p.chiefComplaint?`<div style="grid-column:1/-1"><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Chief Complaint</div><div>${p.chiefComplaint}</div></div>`:''}
+        ${p.allergies&&p.allergies!=='None Known'?`<div style="grid-column:1/-1;color:var(--red)"><b>⚠ Allergy:</b> ${p.allergies}</div>`:''}
+      </div>
+      <!-- Drugs Table -->
+      <div style="margin-bottom:14px">
+        ${rxList.length===0 ? '<div style="color:var(--text-muted);font-size:13px;font-style:italic">No medications prescribed.</div>' :
+        `<table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:1.5px solid var(--border)">
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">#</th>
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">DRUG</th>
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">DOSE</th>
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">ROUTE</th>
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">FREQ</th>
+            <th style="text-align:left;padding:6px;font-size:11px;color:var(--text-muted)">DURATION</th>
+          </tr></thead>
+          <tbody>
+            ${rxList.map((r,i)=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px 6px;color:var(--text-muted)">${i+1}</td>
+              <td style="padding:8px 6px;font-weight:600">${r.drug}</td>
+              <td style="padding:8px 6px;font-family:var(--mono)">${r.dose}</td>
+              <td style="padding:8px 6px">${r.route}</td>
+              <td style="padding:8px 6px">${r.freq}</td>
+              <td style="padding:8px 6px">${r.duration}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`}
+      </div>
+      ${(S.labOrders[id]||[]).length>0?`
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:6px">Investigations Ordered</div>
+        <div>${(S.labOrders[id]||[]).map(l=>`<span style="display:inline-block;background:var(--panel);border-radius:4px;padding:2px 8px;font-size:12px;margin:2px">${l.test} [${l.priority}]</span>`).join('')}</div>
+      </div>`:''}
+      <!-- Signature -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--text-muted)">Consultation time: ${elapsed}min<br>Generated: ${now()}</div>
+        <div style="text-align:center">
+          <div style="border-top:1.5px solid var(--navy);padding-top:6px;min-width:140px;font-size:12px">${doc?.name||getCurrentStaffName()}</div>
+          <div style="font-size:10px;color:var(--text-muted)">Signature</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-outline" onclick="window.print()">🖨 Print</button>
+      <button class="btn btn-primary" onclick="finaliseConsult('${id}')">✔ Finalise & Close Consult</button>
+    </div>
+  </div>`);
+}
+
+function finaliseConsult(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  // Mark OPD queue as done
+  if (S.opdQueue) {
+    const q = S.opdQueue.find(x=>x.pid===id);
+    if (q) q.status = 'Done';
+  }
+  closeModal();
+  S.activePatientId = null;
+  showToast(`Consultation for ${p.name} completed`);
+  save();
+}
+
+// ============================================================
+// IPD DETAIL SCREEN (existing tabs, renamed for clarity)
+// ============================================================
+function renderIPDDetail(id) {
+  const p = S.patients.find(x => x.id === id);
+  if (!p) return;
+  const doc = S.staff.find(s => s.id === p.doctorId);
+  const nurse = S.staff.find(s => s.id === p.nurseId);
+  const vitals = (S.vitals[id] || [])[0];
+  const role = S.currentRole;
+  const tab = S.activeTab[id] || 'overview';
+
+  // LOS
+  let los = 0;
+  try {
+    const parts = p.admitTime?.split(' ');
+    const dp = parts?.[0]?.split('/');
+    if (dp) { const d = new Date(`${dp[2]}-${dp[1]}-${dp[0]}`); los = Math.max(0,Math.round((Date.now()-d.getTime())/(1000*60*60*24))); }
+  } catch(e) {}
+
+  const tabs = ['Overview','Vitals','Prescriptions','Labs','Notes','MAR','Chat'];
+  const tabContent = { overview:renderOverviewTab, vitals:renderVitalsTab, prescriptions:renderPrescriptionsTab, labs:renderLabsTab, notes:renderNotesTab, mar:renderMARTab, chat:renderChatTab };
+
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="flex items-center gap-3 mb-4">
+      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;save()">← Back</button>
+      <div style="flex:1">
+        <span class="fw-600" style="font-size:16px">${p.name}</span>
+        <span class="text-muted" style="margin-left:8px">${p.age}${p.gender} | Bed ${p.bed} | ${p.ehrId}</span>
+      </div>
+      <span class="badge badge-teal">IPD</span>
+      <span class="badge badge-indigo">LOS ${los}d</span>
+      ${role==='Doctor' ? `<button class="btn btn-warn btn-sm" onclick="markDischarge('${id}')">📄 Discharge</button>` : ''}
+      <button class="btn btn-danger btn-sm" onclick="triggerSOS('${id}')">🚨 SOS</button>
+    </div>
+
+    <div class="tabs">
+      ${tabs.map(t => `<div class="tab ${tab===t.toLowerCase()?'active':''}" onclick="setTab('${id}','${t.toLowerCase()}')">${t}</div>`).join('')}
+    </div>
+
+    <div id="tab-content">
+      ${(tabContent[tab] || tabContent.overview)(id, p)}
+    </div>
+  `;
+}
+
 function setTab(id, tab) {
   S.activeTab[id] = tab;
   save();
 }
 
-// OVERVIEW TAB
-function renderOverviewTab(id, p) {
+// OVERVIEW TAB (IPD)function renderOverviewTab(id, p) {
   const doc = S.staff.find(s => s.id === p.doctorId);
   const nurse = S.staff.find(s => s.id === p.nurseId);
   const vitals = (S.vitals[id] || [])[0];
