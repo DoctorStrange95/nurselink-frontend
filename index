@@ -1126,13 +1126,8 @@ function renderPatientCard(p) {
   // LOS for IPD
   let los = '';
   if (!isOPD && p.admitTime) {
-    try {
-      const parts = p.admitTime.split(' ');
-      const dateParts = parts[0].split('/');
-      const d = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
-      const days = Math.max(0, Math.round((Date.now()-d.getTime())/(1000*60*60*24)));
-      los = `<span class="badge badge-indigo" style="font-size:10px">LOS ${days}d</span>`;
-    } catch(e) {}
+    const days = calcLOS(p.admitTime);
+    los = `<span class="badge badge-indigo" style="font-size:10px">LOS ${days}d</span>`;
   }
   return `
     <div class="patient-card" onclick="openPatient('${p.id}')">
@@ -1549,13 +1544,7 @@ function renderIPDDetail(id) {
   const role = S.currentRole;
   const tab = S.activeTab[id] || 'overview';
 
-  // LOS
-  let los = 0;
-  try {
-    const parts = p.admitTime?.split(' ');
-    const dp = parts?.[0]?.split('/');
-    if (dp) { const d = new Date(`${dp[2]}-${dp[1]}-${dp[0]}`); los = Math.max(0,Math.round((Date.now()-d.getTime())/(1000*60*60*24))); }
-  } catch(e) {}
+  const los = calcLOS(p.admitTime);
 
   const tabs = ['Overview','Vitals','Prescriptions','Labs','Notes','MAR','Chat'];
   const tabContent = { overview:renderOverviewTab, vitals:renderVitalsTab, prescriptions:renderPrescriptionsTab, labs:renderLabsTab, notes:renderNotesTab, mar:renderMARTab, chat:renderChatTab };
@@ -1582,6 +1571,31 @@ function renderIPDDetail(id) {
       ${(tabContent[tab] || tabContent.overview)(id, p)}
     </div>
   `;
+}
+
+function calcLOS(admitTime) {
+  if (!admitTime) return 0;
+  try {
+    // Handle DD/MM/YYYY HH:MM format
+    const parts = admitTime.split(' ');
+    const dateParts = parts[0].split('/');
+    if (dateParts.length === 3) {
+      const d = new Date(
+        parseInt(dateParts[2]),
+        parseInt(dateParts[1]) - 1,
+        parseInt(dateParts[0])
+      );
+      if (!isNaN(d.getTime())) {
+        return Math.max(0, Math.round((Date.now() - d.getTime()) / (1000*60*60*24)));
+      }
+    }
+    // Fallback: try direct parse
+    const d2 = new Date(admitTime);
+    if (!isNaN(d2.getTime())) {
+      return Math.max(0, Math.round((Date.now() - d2.getTime()) / (1000*60*60*24)));
+    }
+  } catch(e) {}
+  return 0;
 }
 
 function setTab(id, tab) {
@@ -1696,9 +1710,12 @@ function renderOverviewTab(id, p) {
     <div class="card mt-4">
       <div class="card-header"><h3>Quick Actions</h3></div>
       <div class="card-body flex gap-3" style="flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="showAddConsultModal('${id}')">📝 Add Consultation Note</button>
+        <button class="btn btn-primary" onclick="showAddConsultModal('${id}')">📝 Consult Note</button>
         <button class="btn btn-primary" onclick="showAddMedModal('${id}')">💊 Add Medicine</button>
         <button class="btn btn-primary" onclick="showOrderLabModal('${id}')">🔬 Order Investigation</button>
+        <button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">📊 Record Vitals</button>
+        <button class="btn btn-outline" onclick="setTab('${id}','chat')">💬 Chat with Nurse</button>
+        <button class="btn btn-outline" onclick="showAssignDoctorModal('${id}')">👨‍⚕️ Assign Doctor</button>
       </div>
     </div>` : ''}
 
@@ -1708,6 +1725,7 @@ function renderOverviewTab(id, p) {
       <div class="card-body flex gap-3" style="flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">📊 Record Vitals</button>
         <button class="btn btn-outline" onclick="showAddNursingNoteModal('${id}')">📝 Add Nursing Note</button>
+        <button class="btn btn-outline" onclick="setTab('${id}','chat')">💬 Chat with Doctor</button>
       </div>
     </div>` : ''}
   `;
@@ -1734,7 +1752,7 @@ function renderVitalsTab(id, p) {
         <div class="fw-600">Vitals History</div>
         <div class="text-muted">${vlist.length} entries recorded</div>
       </div>
-      ${hasNurse ? `<button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">➕ Record Vitals</button>` : ''}
+      ${(hasNurse || hasDoctor) ? `<button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">➕ Record Vitals</button>` : ''}
     </div>
 
     ${bpVals.length > 1 ? `
@@ -3093,6 +3111,47 @@ function renderStaffPage() {
   `;
 }
 
+function showAssignDoctorModal(id) {
+  const p = S.patients.find(x=>x.id===id);
+  const doctors = S.staff.filter(s=>s.role==='Doctor');
+  const nurses = S.staff.filter(s=>s.role==='Nurse');
+  showModal(`<div class="modal">
+    <div class="modal-header"><h2>👨‍⚕️ Assign Care Team — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Attending Doctor</label>
+        <select class="form-control" id="assign-doc">
+          ${doctors.map(d=>`<option value="${d.id}" ${p.doctorId===d.id?'selected':''}>${d.name} (${d.dept})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assigned Nurse</label>
+        <select class="form-control" id="assign-nurse">
+          <option value="">— None —</option>
+          ${nurses.map(n=>`<option value="${n.id}" ${p.nurseId===n.id?'selected':''}>${n.name} (${n.dept})</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAssignDoctor('${id}')">Save Assignment</button>
+    </div>
+  </div>`);
+}
+
+function saveAssignDoctor(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  p.doctorId = document.getElementById('assign-doc').value;
+  p.nurseId = document.getElementById('assign-nurse').value;
+  const doc = S.staff.find(s=>s.id===p.doctorId);
+  const nurse = S.staff.find(s=>s.id===p.nurseId);
+  closeModal();
+  showToast(`Care team updated — ${doc?.name}${nurse?' + '+nurse.name:''}`);
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  renderIPDDetail(id);
+}
+
 function showAddStaffModal() {
   showModal(`<div class="modal">
     <div class="modal-header"><h2>Add Staff Member</h2><button class="modal-close" onclick="closeModal()">×</button></div>
@@ -3427,8 +3486,7 @@ function renderAnalyticsPage() {
             ${S.patients.filter(p=>p.status==='Active').map(p=>{
               const doc = S.staff.find(s=>s.id===p.doctorId);
               const alerts = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
-              const admitDate = new Date(p.admitTime?.split(' ').reverse().join('-') || Date.now());
-              const los = Math.max(0,Math.round((Date.now()-admitDate.getTime())/(1000*60*60*24)));
+              const los = calcLOS(p.admitTime);
               return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer">
                 <td class="mono">${p.ehrId||'—'}</td>
                 <td class="fw-600">${p.name}</td>
@@ -3522,8 +3580,7 @@ function loadBillPatient(pid) {
   // Auto-add bed charges
   window._billItems = [];
   if (p.bed && p.admitTime) {
-    const admitDate = new Date(p.admitTime?.split(' ').reverse().join('-') || Date.now());
-    const los = Math.max(1, Math.round((Date.now()-admitDate.getTime())/(1000*60*60*24)));
+    const los = Math.max(1, calcLOS(p.admitTime) || 1);
     window._billItems.push({ category:'Bed Charges', particulars:`Bed ${p.bed} × ${los} day(s)`, rate:2000, qty:los });
   }
   // Auto-add prescriptions as pharmacy
@@ -3853,35 +3910,7 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Auto vitals simulation — never wipes active forms
-setInterval(() => {
-  S.patients.filter(p=>p.status==='Active').forEach(p => {
-    const last = (S.vitals[p.id]||[])[0];
-    if (!last) return;
-    const newVital = {
-      ...last,
-      id:'V'+Date.now()+Math.random(),
-      time:ts(),
-      bpSys: Math.max(80, Math.min(200, last.bpSys + Math.floor(Math.random()*7)-3)),
-      pulse: Math.max(45, Math.min(140, last.pulse + Math.floor(Math.random()*5)-2)),
-      spo2: Math.max(85, Math.min(100, last.spo2 + Math.floor(Math.random()*3)-1)),
-      nurse:'[Auto-Sim]',
-      notes:'Automated simulation reading',
-    };
-    S.vitals[p.id].unshift(newVital);
-    if (S.vitals[p.id].length > 20) S.vitals[p.id] = S.vitals[p.id].slice(0,20);
-    checkAlerts(p.id, newVital);
-  });
-  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e){}
-  // Only re-render if no modal open and not in a form or OPD consult
-  const modalOpen = !!document.getElementById('modal-container').innerHTML;
-  const activeView = S.activeNavItem[S.currentRole] || getDefaultView();
-  const inForm = ['admit','register'].includes(activeView) && !S.activePatientId;
-  const inOPDConsult = S.activePatientId &&
-    S.patients.find(p => p.id === S.activePatientId)?.status === 'OPD';
-  if (!modalOpen && !inForm && !inOPDConsult) renderAll();
-  else { renderAlertFeed(); renderNotifBadge(); }
-}, 45000);
+// Vitals are entered manually by Nurse or Doctor only — no auto-simulation
 
 // Close notif on outside click
 document.addEventListener('click', e => {
