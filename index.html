@@ -485,6 +485,11 @@ async function startup() {
   const saved = localStorage.getItem('NL_JWT');
   if (saved) {
     API_TOKEN = saved;
+    try {
+      const payload = JSON.parse(atob(API_TOKEN.split('.')[1]));
+      window._loggedInUser = payload;
+      if (payload.role) S.currentRole = payload.role;
+    } catch(e) {}
     const ok = await tryLoadLiveData();
     if (ok) { showApp(true); return; }
     API_TOKEN = null;
@@ -514,6 +519,12 @@ async function doLogin() {
     if (!res.ok) throw new Error(data.error || data.message || 'Login failed');
     API_TOKEN = data.token;
     localStorage.setItem('NL_JWT', API_TOKEN);
+    // Decode user from token payload
+    try {
+      const payload = JSON.parse(atob(API_TOKEN.split('.')[1]));
+      window._loggedInUser = payload;
+      if (payload.role) S.currentRole = payload.role;
+    } catch(e) {}
     await tryLoadLiveData();
     showApp(true);
   } catch(e) {
@@ -599,6 +610,8 @@ function demoMode() {
   showApp(false);
 }
 
+let socket = null;
+
 function showApp(live) {
   IS_LIVE = live;
   document.getElementById('login-screen').style.display = 'none';
@@ -607,7 +620,66 @@ function showApp(live) {
   document.getElementById('live-badge').style.display = live ? 'block' : 'none';
   document.getElementById('offline-badge').style.display = 'none';
   document.getElementById('refresh-btn').style.display = live ? 'inline-block' : 'none';
-  if (live) showToast('Connected to live server ✓', 'info');
+  if (live) {
+    showToast('Connected to live server ✓', 'info');
+    connectSocket();
+  }
+  renderAll();
+}
+
+function connectSocket() {
+  if (!IS_LIVE) return;
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js';
+  script.onload = () => {
+    socket = io('https://nurselink-server.onrender.com');
+    socket.on('vitals:new', v => {
+      const pid = String(v.patient_id);
+      if (!S.vitals[pid]) S.vitals[pid] = [];
+      S.vitals[pid].unshift({ id:String(v.id), time:new Date(v.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}), bpSys:v.bp_sys, bpDia:v.bp_dia, pulse:v.pulse, spo2:v.spo2, temp:v.temperature, rr:v.resp_rate, gcs:v.gcs, uo:v.urine_output, glucose:v.blood_glucose, drain:v.drain_output, pain:v.pain_score, notes:v.notes, nurse:v.recorded_by_name||'Staff' });
+      renderAll();
+    });
+    socket.on('alert:new', data => {
+      data.alerts.forEach(a => {
+        S.alerts.unshift({ id:'A'+Date.now()+Math.random(), patientId:String(data.patientId), type:a.type, title:a.title, msg:a.message||'', time:ts(), acked:false });
+        showToast(`${a.title}`, a.type==='critical'?'error':'warn');
+      });
+      renderAll();
+    });
+    socket.on('prescription:new', rx => {
+      const pid = String(rx.patient_id);
+      if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
+      S.prescriptions[pid].unshift({ id:String(rx.id), drug:rx.drug, dose:rx.dose, route:rx.route, freq:rx.frequency, duration:rx.duration, instructions:rx.instructions, prescribedBy:rx.prescribed_by_name||'Doctor', time:new Date(rx.created_at).toLocaleString('en-IN'), status:rx.status });
+      renderAll();
+    });
+    socket.on('chat:message', msg => {
+      const pid = String(msg.patient_id);
+      if (!S.chat[pid]) S.chat[pid] = [];
+      S.chat[pid].push({ from:msg.sender_role, name:msg.sender_name, msg:msg.message, time:new Date(msg.sent_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) });
+      renderAll();
+    });
+    socket.on('patient:admitted', p => { refreshLiveData(); });
+  };
+  document.head.appendChild(script);
+}
+
+async function loadPatientData(pid) {
+  if (!IS_LIVE) return;
+  const [vitals, rx, labs, consult, nursing, chat] = await Promise.all([
+    apiGet('/vitals/' + pid),
+    apiGet('/prescriptions/' + pid),
+    apiGet('/labs/' + pid),
+    apiGet('/notes/consult/' + pid),
+    apiGet('/notes/nursing/' + pid),
+    apiGet('/chat/' + pid),
+  ]);
+  if (vitals) S.vitals[pid] = vitals.map(v=>({ id:String(v.id), time:new Date(v.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' '+new Date(v.recorded_at).toLocaleDateString('en-IN'), bpSys:v.bp_sys, bpDia:v.bp_dia, pulse:v.pulse, spo2:v.spo2, temp:v.temperature, rr:v.resp_rate, gcs:v.gcs, uo:v.urine_output, glucose:v.blood_glucose, drain:v.drain_output, pain:v.pain_score, notes:v.notes, nurse:v.recorded_by_name||'Staff' }));
+  if (rx) S.prescriptions[pid] = rx.map(r=>({ id:String(r.id), drug:r.drug, dose:r.dose, route:r.route, freq:r.frequency, duration:r.duration, instructions:r.instructions, prescribedBy:r.prescribed_by_name||'Doctor', time:new Date(r.created_at).toLocaleString('en-IN'), status:r.status }));
+  if (labs) S.labOrders[pid] = labs.map(l=>({ id:String(l.id), test:l.test_name, category:l.category, priority:l.priority, status:l.status, result:l.result||'', resultStatus:l.result_status||'', orderedBy:l.ordered_by_name||'Doctor', time:new Date(l.created_at).toLocaleString('en-IN') }));
+  if (consult) S.consultNotes[pid] = consult.map(c=>({ id:String(c.id), time:new Date(c.created_at).toLocaleString('en-IN'), by:c.written_by_name||'Doctor', subjective:c.subjective, objective:c.objective, assessment:c.assessment, plan:c.plan }));
+  if (nursing) S.nursingNotes[pid] = nursing.map(n=>({ id:String(n.id), time:new Date(n.created_at).toLocaleString('en-IN'), by:n.written_by_name||'Nurse', note:n.note }));
+  if (chat) S.chat[pid] = chat.map(m=>({ from:m.sender_role, name:m.sender_name, msg:m.message, time:new Date(m.sent_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) }));
+  if (socket) socket.emit('join:patient', pid);
   renderAll();
 }
 
@@ -774,6 +846,7 @@ function ts() {
 function getRole() { return S.currentRole; }
 function getStaff(role) { return S.staff.find(s => s.role === role) || S.staff[0]; }
 function getCurrentStaffName() {
+  if (IS_LIVE && window._loggedInUser) return window._loggedInUser.name;
   const m = { Doctor:'Dr. Arjun Mehta', Nurse:'Priya Sharma', Pharmacist:'Raj Dispensary', 'Lab Tech':'Anand Kumar', Admin:'Vikram Singh' };
   return m[getRole()] || 'Staff';
 }
@@ -866,7 +939,7 @@ function renderSidebar() {
   const navItems = {
     Doctor: [
       { icon:'🏥', label:'My Patients', view:'patients' },
-      { icon:'➕', label:'Admit Patient', view:'admit' },
+      { icon:'➕', label:'New Patient', view:'admit' },
       { icon:'💊', label:'Prescriptions', view:'prescriptions' },
       { icon:'🔬', label:'Lab Orders', view:'labs' },
       { icon:'⚡', label:'Alerts', view:'alerts' },
@@ -981,7 +1054,7 @@ function renderPatientList() {
         <div class="section-title">${role === 'Nurse' ? 'My Assigned Patients' : role === 'Doctor' ? 'My Patients' : 'All Patients'}</div>
         <div class="section-sub">${pts.length} patient${pts.length!==1?'s':''} active</div>
       </div>
-      ${role === 'Doctor' ? `<button class="btn btn-primary" onclick="setNav('admit')">➕ Admit Patient</button>` : ''}
+      ${role === 'Doctor' ? `<button class="btn btn-primary" onclick="setNav('admit')">➕ New Patient</button>` : ''}
     </div>
     <div class="patient-grid">
       ${pts.map(p => renderPatientCard(p)).join('')}
@@ -997,13 +1070,14 @@ function renderPatientCard(p) {
   const nurse = S.staff.find(s => s.id === p.nurseId);
   return `
     <div class="patient-card" onclick="openPatient('${p.id}')">
-      <div class="patient-card-header" style="background:${status==='critical'?'var(--red)':status==='warning'?'var(--warn)':'var(--navy)'}">
+      <div class="patient-card-header" style="background:${p.status==='OPD'?'var(--indigo)':status==='critical'?'var(--red)':status==='warning'?'var(--warn)':'var(--navy)'}">
         <div class="flex items-center justify-between">
           <div>
             <div class="pt-name">${p.name}</div>
             <div class="pt-meta">${p.age}${p.gender} | ${p.bed} | ${p.ehrId}</div>
           </div>
           <div>
+            <span class="badge ${p.status==='OPD'?'badge-indigo':'badge-teal'}" style="margin-bottom:4px">${p.status==='OPD'?'OPD':'IPD'}</span>
             ${alerts.length > 0 ? `<span class="badge badge-red">⚠ ${alerts.length}</span>` : ''}
           </div>
         </div>
@@ -1034,6 +1108,7 @@ function openPatient(id) {
   S.activePatientId = id;
   if (!S.activeTab[id]) S.activeTab[id] = 'overview';
   save();
+  loadPatientData(id);
 }
 
 // ============================================================
@@ -1471,7 +1546,7 @@ function showAddConsultModal(patientId) {
   </div>`);
 }
 
-function submitConsult(pid) {
+async function submitConsult(pid) {
   const subj = document.getElementById('c-subj').value.trim();
   const obj = document.getElementById('c-obj').value.trim();
   const assess = document.getElementById('c-assess').value.trim();
@@ -1482,7 +1557,11 @@ function submitConsult(pid) {
   S.consultNotes[pid].unshift(note);
   S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'New Consultation', body:`${S.patients.find(p=>p.id===pid)?.name} — Note added`, time:ts(), read:false });
   closeModal();
-  showToast('Consultation note saved');
+
+  if (IS_LIVE) {
+    const res = await apiPost('/notes/consult/' + pid, { subjective:subj, objective:obj, assessment:assess, plan });
+    showToast(res ? 'Consultation note saved ✓' : 'Saved locally — server sync failed', res ? 'info' : 'warn');
+  } else { showToast('Consultation note saved'); }
   showPayload({ event:'CONSULT_NOTE_ADDED', patient_ehr_id:S.patients.find(p=>p.id===pid)?.ehrId, note });
   save();
 }
@@ -1536,7 +1615,7 @@ function showAddMedModal(patientId) {
   </div>`);
 }
 
-function submitMed(pid) {
+async function submitMed(pid) {
   const drug = document.getElementById('rx-drug').value.trim();
   const dose = document.getElementById('rx-dose').value.trim();
   const route = document.getElementById('rx-route').value;
@@ -1547,23 +1626,26 @@ function submitMed(pid) {
   if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
   const rx = { id:'RX'+Date.now(), drug, dose, route, freq, duration:dur, instructions:inst, prescribedBy:getCurrentStaffName(), time:now(), status:'active' };
   S.prescriptions[pid].unshift(rx);
-  // Push to pharmacy
   S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'New Prescription', body:`${S.patients.find(p=>p.id===pid)?.name} — ${drug} ${dose}`, time:ts(), read:false });
   closeModal();
-  showToast('Prescription added & sent to Pharmacy');
+
+  if (IS_LIVE) {
+    const res = await apiPost('/prescriptions/' + pid, { drug, dose, route, frequency:freq, duration:dur, instructions:inst });
+    showToast(res ? 'Prescription saved & sent to Pharmacy ✓' : 'Saved locally — server sync failed', res ? 'info' : 'warn');
+  } else { showToast('Prescription added & sent to Pharmacy'); }
   save();
 }
 
-function discontinueMed(pid, rxId) {
+async function discontinueMed(pid, rxId) {
   const rx = (S.prescriptions[pid]||[]).find(r=>r.id===rxId);
-  if (rx) {
-    rx.status = 'discontinued';
-    rx.dcBy = getCurrentStaffName();
-    rx.dcTime = now();
-    S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'Medication DC\'d', body:`${rx.drug} discontinued by ${getCurrentStaffName()}`, time:ts(), read:false });
-    showToast(`${rx.drug} discontinued`);
-    save();
-  }
+  if (!rx) return;
+  rx.status = 'discontinued';
+  rx.dcBy = getCurrentStaffName();
+  rx.dcTime = now();
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:"Medication DC'd", body:`${rx.drug} discontinued by ${getCurrentStaffName()}`, time:ts(), read:false });
+  showToast(`${rx.drug} discontinued`);
+  if (IS_LIVE) await apiPatch('/prescriptions/' + rxId + '/discontinue', {});
+  save();
 }
 
 function showOrderLabModal(patientId) {
@@ -1604,7 +1686,7 @@ function showOrderLabModal(patientId) {
   </div>`);
 }
 
-function submitLabOrder(pid) {
+async function submitLabOrder(pid) {
   const checkboxes = document.querySelectorAll('#modal-container input[type=checkbox]:checked:not(:disabled)');
   if (checkboxes.length === 0) { alert('Select at least one test.'); return; }
   if (!S.labOrders[pid]) S.labOrders[pid] = [];
@@ -1619,7 +1701,12 @@ function submitLabOrder(pid) {
   });
   S.notifications.unshift({ id:'N'+Date.now(), role:'Lab Tech', title:'New Lab Orders', body:`${S.patients.find(p=>p.id===pid)?.name} — ${tests.length} test(s) ordered`, time:ts(), read:false });
   closeModal();
-  showToast(`${tests.length} investigation(s) ordered`);
+
+  if (IS_LIVE) {
+    const payload = tests.map(t => ({ test_name:t.test, category:t.category||'', priority:t.priority }));
+    const res = await apiPost('/labs/' + pid, { tests: payload });
+    showToast(res ? `${tests.length} test(s) ordered ✓` : `Ordered locally — server sync failed`, res ? 'info' : 'warn');
+  } else { showToast(`${tests.length} investigation(s) ordered`); }
   save();
 }
 
@@ -1694,32 +1781,42 @@ function showRecordVitalsModal(patientId) {
   </div>`);
 }
 
-function submitVitals(pid) {
+async function submitVitals(pid) {
   const bps = parseInt(document.getElementById('v-bps').value);
   const bpd = parseInt(document.getElementById('v-bpd').value);
   const pulse = parseInt(document.getElementById('v-pulse').value);
   const spo2 = parseInt(document.getElementById('v-spo2').value);
   if (!bps || !bpd || !pulse || !spo2) { alert('BP, Pulse and SpO2 are required.'); return; }
-  const vital = {
-    id:'V'+Date.now(), time:ts(),
-    bpSys:bps, bpDia:bpd, pulse, spo2,
-    temp:parseFloat(document.getElementById('v-temp').value)||37.0,
-    rr:parseInt(document.getElementById('v-rr').value)||18,
-    gcs:parseInt(document.getElementById('v-gcs').value)||15,
-    uo:parseInt(document.getElementById('v-uo').value)||40,
-    glucose:parseInt(document.getElementById('v-glucose').value)||100,
-    drain:parseInt(document.getElementById('v-drain').value)||0,
-    pain:parseInt(document.getElementById('v-pain').value)||0,
-    notes:document.getElementById('v-notes').value.trim(),
-    nurse:getCurrentStaffName(),
-  };
+  const temp = parseFloat(document.getElementById('v-temp').value)||37.0;
+  const rr = parseInt(document.getElementById('v-rr').value)||18;
+  const gcs = parseInt(document.getElementById('v-gcs').value)||15;
+  const uo = parseInt(document.getElementById('v-uo').value)||40;
+  const glucose = parseInt(document.getElementById('v-glucose').value)||100;
+  const drain = parseInt(document.getElementById('v-drain').value)||0;
+  const pain = parseInt(document.getElementById('v-pain').value)||0;
+  const notes = document.getElementById('v-notes').value.trim();
+
+  const vital = { id:'V'+Date.now(), time:ts(), bpSys:bps, bpDia:bpd, pulse, spo2, temp, rr, gcs, uo, glucose, drain, pain, notes, nurse:getCurrentStaffName() };
   if (!S.vitals[pid]) S.vitals[pid] = [];
   S.vitals[pid].unshift(vital);
   checkAlerts(pid, vital);
   const p = S.patients.find(x=>x.id===pid);
   S.notifications.unshift({ id:'N'+Date.now(), role:'Doctor', title:'New Vitals', body:`${p?.name} — BP ${bps}/${bpd}, SpO2 ${spo2}%`, time:ts(), read:false });
   closeModal();
-  showToast('Vitals recorded & pushed to Doctor');
+
+  if (IS_LIVE) {
+    const res = await apiPost('/vitals/' + pid, {
+      bp_sys:bps, bp_dia:bpd, pulse, spo2, temperature:temp,
+      resp_rate:rr, gcs, urine_output:uo, blood_glucose:glucose,
+      drain_output:drain, pain_score:pain, notes
+    });
+    if (res) {
+      // Sync alerts from server response
+      const fresh = await apiGet('/alerts');
+      if (fresh) S.alerts = fresh.map(a=>({ id:String(a.id), patientId:String(a.patient_id), type:a.type, title:a.title, msg:a.message||'', time:a.created_at?new Date(a.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'', acked:!!a.acknowledged_by }));
+      showToast('Vitals saved to server ✓');
+    } else { showToast('Vitals saved locally — server sync failed', 'warn'); }
+  } else { showToast('Vitals recorded & pushed to Doctor'); }
   showPayload({ event:'VITALS_RECORDED', patient_ehr_id:p?.ehrId, recorded_by:getCurrentStaffName(), vitals:vital });
   save();
 }
@@ -1741,17 +1838,20 @@ function showAddNursingNoteModal(patientId) {
   </div>`);
 }
 
-function submitNursingNote(pid) {
+async function submitNursingNote(pid) {
   const note = document.getElementById('nn-note').value.trim();
   if (!note) { alert('Note cannot be empty.'); return; }
   if (!S.nursingNotes[pid]) S.nursingNotes[pid] = [];
   S.nursingNotes[pid].unshift({ id:'NN'+Date.now(), time:now(), by:getCurrentStaffName(), note });
   closeModal();
-  showToast('Nursing note saved');
+  if (IS_LIVE) {
+    const res = await apiPost('/notes/nursing/' + pid, { note });
+    showToast(res ? 'Nursing note saved ✓' : 'Saved locally — server sync failed', res ? 'info' : 'warn');
+  } else { showToast('Nursing note saved'); }
   save();
 }
 
-function recordMAR(pid, rxId, status) {
+async function recordMAR(pid, rxId, status) {
   if (!S.mar[pid]) S.mar[pid] = [];
   const rx = (S.prescriptions[pid]||[]).find(r=>r.id===rxId);
   S.mar[pid].unshift({ id:'M'+Date.now(), rxId, status, by:getCurrentStaffName(), time:ts() });
@@ -1761,10 +1861,11 @@ function recordMAR(pid, rxId, status) {
   } else {
     showToast(`${rx?.drug}: Marked as ${status}`);
   }
+  if (IS_LIVE) await apiPost('/mar', { prescription_id: rxId, patient_id: pid, status });
   save();
 }
 
-function sendChat(pid) {
+async function sendChat(pid) {
   const input = document.getElementById(`chat-input-${pid}`);
   const msg = input?.value.trim();
   if (!msg) return;
@@ -1772,11 +1873,11 @@ function sendChat(pid) {
   const role = S.currentRole;
   const name = getCurrentStaffName();
   S.chat[pid].push({ from:role, name, msg, time:ts() });
-  // Notify the other party
   const targetRole = role==='Doctor'?'Nurse':'Doctor';
   const p = S.patients.find(x=>x.id===pid);
   S.notifications.unshift({ id:'N'+Date.now(), role:targetRole, title:`Message from ${name}`, body:`Re: ${p?.name} — ${msg.substring(0,50)}`, time:ts(), read:false });
   if (input) input.value = '';
+  if (IS_LIVE) await apiPost('/chat/' + pid, { message: msg });
   save();
 }
 
@@ -1900,8 +2001,23 @@ function renderAdmitForm() {
   const doctors = S.staff.filter(s=>s.role==='Doctor');
   const availBeds = S.beds.filter(b=>b.status==='available');
   main.innerHTML = `
-    <div class="section-title">Admit New Patient</div>
-    <div class="section-sub">Fill patient details, assign care team, write initial prescription</div>
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <div class="section-title" id="admit-form-title">OPD Consultation</div>
+        <div class="section-sub" id="admit-form-sub">Quick consultation — no bed assignment</div>
+      </div>
+      <!-- OPD / IPD Toggle -->
+      <div style="display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:6px 10px;border:1.5px solid var(--border);">
+        <span id="lbl-opd" style="font-size:13px;font-weight:700;color:var(--teal)">OPD</span>
+        <div class="toggle-switch" style="width:44px;height:24px;">
+          <input type="checkbox" id="admit-mode-toggle" onchange="toggleAdmitMode(this.checked)">
+          <label class="toggle-slider" for="admit-mode-toggle" style="cursor:pointer;"></label>
+        </div>
+        <span id="lbl-ipd" style="font-size:13px;font-weight:700;color:var(--text-muted)">IPD</span>
+      </div>
+    </div>
+
+    <!-- PATIENT INFO (shared) -->
     <div class="card">
       <div class="card-header"><h3>Patient Information</h3></div>
       <div class="card-body">
@@ -1911,19 +2027,10 @@ function renderAdmitForm() {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Sex *</label>
+            <label class="form-label">Sex</label>
             <select class="form-control" id="ad-gender"><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
           </div>
           <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ad-phone" placeholder="10-digit number"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Blood Group</label>
-            <select class="form-control" id="ad-bg">
-              <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
-              <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
-            </select>
-          </div>
-          <div class="form-group"><label class="form-label">Allergies</label><input class="form-control" id="ad-allergy" placeholder="None Known"></div>
         </div>
         <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints"></textarea></div>
         <div class="form-row">
@@ -1933,81 +2040,136 @@ function renderAdmitForm() {
       </div>
     </div>
 
+    <!-- PRESCRIPTION (shared) -->
     <div class="card mt-4">
-      <div class="card-header"><h3>Care Team & Bed</h3></div>
+      <div class="card-header"><h3>Prescription <span style="font-weight:400;color:var(--text-muted)">(optional)</span></h3></div>
       <div class="card-body">
-        <div class="form-row-3">
-          <div class="form-group">
-            <label class="form-label">Admitting Doctor</label>
-            <select class="form-control" id="ad-doc">
-              ${doctors.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Assign Nurse</label>
-            <select class="form-control" id="ad-nurse">
-              ${nurses.map(n=>`<option value="${n.id}">${n.name} (${n.dept})</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Bed</label>
-            <select class="form-control" id="ad-bed">
-              ${availBeds.length===0 ? '<option>No beds available</option>' : availBeds.map(b=>`<option value="${b.id}">${b.id} (Ward ${b.ward})</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Admission Type</label>
-          <select class="form-control" id="ad-type"><option>Post-OPD Consultation</option><option>Direct IPD</option><option>Emergency</option><option>Transfer</option></select>
-        </div>
+        <textarea class="form-control" id="ad-rx" rows="3" placeholder="e.g. Tab. Paracetamol 500mg Oral TDS × 5 days"></textarea>
+        <div class="text-muted mt-2" style="font-size:11px">Free text — pushed to Pharmacy queue</div>
       </div>
     </div>
 
-    <div class="card mt-4">
-      <div class="card-header"><h3>Initial Prescription (optional)</h3></div>
-      <div class="card-body">
-        <textarea class="form-control" id="ad-rx" rows="4" placeholder="e.g. Tab. Paracetamol 500mg Oral TDS × 5 days&#10;Inj. NS 500ml IV over 4 hours"></textarea>
-        <div class="text-muted mt-2" style="font-size:11px">Free text — will be added as unstructured prescription and pushed to Pharmacy</div>
+    <!-- IPD ONLY SECTION (hidden by default) -->
+    <div id="ipd-section" style="display:none;">
+      <div class="card mt-4">
+        <div class="card-header"><h3>Care Team & Bed Assignment</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">Admitting Doctor</label>
+              <select class="form-control" id="ad-doc">
+                ${doctors.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assign Nurse</label>
+              <select class="form-control" id="ad-nurse">
+                ${nurses.map(n=>`<option value="${n.id}">${n.name} (${n.dept})</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bed *</label>
+              <select class="form-control" id="ad-bed">
+                ${availBeds.length===0 ? '<option>No beds available</option>' : availBeds.map(b=>`<option value="${b.id}">${b.id} (Ward ${b.ward})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Blood Group</label>
+              <select class="form-control" id="ad-bg">
+                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+                <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Allergies</label><input class="form-control" id="ad-allergy" placeholder="None Known"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Admission Type</label>
+            <select class="form-control" id="ad-type">
+              <option>Post-OPD Consultation</option><option>Direct IPD</option><option>Emergency</option><option>Transfer</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="flex gap-3 mt-4">
-      <button class="btn btn-primary" onclick="submitAdmit()">✔ Admit Patient</button>
+      <button class="btn btn-primary" id="admit-submit-btn" onclick="submitAdmit()">✔ Save Consultation</button>
       <button class="btn btn-outline" onclick="setNav('patients')">Cancel</button>
     </div>
   `;
 }
 
+function toggleAdmitMode(isIPD) {
+  const ipdSection = document.getElementById('ipd-section');
+  const title = document.getElementById('admit-form-title');
+  const sub = document.getElementById('admit-form-sub');
+  const btn = document.getElementById('admit-submit-btn');
+  const lblOpd = document.getElementById('lbl-opd');
+  const lblIpd = document.getElementById('lbl-ipd');
+
+  if (isIPD) {
+    ipdSection.style.display = 'block';
+    title.textContent = 'IPD Admission';
+    sub.textContent = 'Full admission — bed assignment, care team, nursing handover';
+    btn.textContent = '✔ Admit to IPD';
+    lblOpd.style.color = 'var(--text-muted)';
+    lblIpd.style.color = 'var(--teal)';
+  } else {
+    ipdSection.style.display = 'none';
+    title.textContent = 'OPD Consultation';
+    sub.textContent = 'Quick consultation — no bed assignment';
+    btn.textContent = '✔ Save Consultation';
+    lblOpd.style.color = 'var(--teal)';
+    lblIpd.style.color = 'var(--text-muted)';
+  }
+}
+
 async function submitAdmit() {
+  const isIPD = document.getElementById('admit-mode-toggle')?.checked || false;
   const name = document.getElementById('ad-name').value.trim();
   const age = document.getElementById('ad-age').value;
   const diag = document.getElementById('ad-diag').value.trim();
   const cc = document.getElementById('ad-cc').value.trim();
   if (!name || !age || !diag || !cc) { alert('Name, Age, Diagnosis and Chief Complaint are required.'); return; }
-  const bed = document.getElementById('ad-bed').value;
-  const docId = document.getElementById('ad-doc').value;
-  const nurseId = document.getElementById('ad-nurse').value;
+
   const icd = document.getElementById('ad-icd').value.trim() || 'Z00';
   const rx = document.getElementById('ad-rx').value.trim();
   const pid = 'P'+Date.now();
   const ehrId = 'EHR-'+Math.floor(10000+Math.random()*90000);
+
+  // IPD-only fields
+  const bed = isIPD ? document.getElementById('ad-bed')?.value : '';
+  const docId = isIPD ? document.getElementById('ad-doc')?.value : (S.staff.find(s=>s.role==='Doctor')?.id || '');
+  const nurseId = isIPD ? document.getElementById('ad-nurse')?.value : '';
+  const admType = isIPD ? document.getElementById('ad-type')?.value : 'OPD Consultation';
+  const allergy = isIPD ? document.getElementById('ad-allergy')?.value.trim() : 'None Known';
+  const bg = isIPD ? document.getElementById('ad-bg')?.value : '';
+
   const nurse = S.staff.find(s=>s.id===nurseId);
   const doc = S.staff.find(s=>s.id===docId);
 
   const patient = {
-    id:pid, name, age:parseInt(age), gender:document.getElementById('ad-gender').value,
-    phone:document.getElementById('ad-phone').value.trim(),
-    ehrId, diagnosis:diag, icd, bed,
-    doctorId:docId, nurseId,
-    admissionType:document.getElementById('ad-type').value,
-    admitTime:now(), status:'Active',
-    chiefComplaint:cc,
-    allergies:document.getElementById('ad-allergy').value.trim()||'None Known',
-    bloodGroup:document.getElementById('ad-bg').value,
+    id: pid, name, age: parseInt(age),
+    gender: document.getElementById('ad-gender').value,
+    phone: document.getElementById('ad-phone').value.trim(),
+    ehrId, diagnosis: diag, icd, bed,
+    doctorId: docId, nurseId,
+    admissionType: admType,
+    admitTime: now(), status: isIPD ? 'Active' : 'OPD',
+    chiefComplaint: cc,
+    allergies: allergy || 'None Known',
+    bloodGroup: bg,
   };
+
   S.patients.unshift(patient);
-  const bedObj = S.beds.find(b=>b.id===bed);
-  if (bedObj) bedObj.status = 'occupied';
+
+  if (isIPD && bed) {
+    const bedObj = S.beds.find(b=>b.id===bed);
+    if (bedObj) bedObj.status = 'occupied';
+  }
+
   S.vitals[pid] = [];
   S.prescriptions[pid] = [];
   S.labOrders[pid] = [];
@@ -2018,9 +2180,12 @@ async function submitAdmit() {
 
   if (rx) {
     S.prescriptions[pid].push({ id:'RX'+Date.now(), drug:rx, dose:'', route:'', freq:'', duration:'', instructions:'See free text', prescribedBy:getCurrentStaffName(), time:now(), status:'active' });
-    S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'New Admission Rx', body:`${name} — Initial prescription added`, time:ts(), read:false });
+    S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title: isIPD ? 'New Admission Rx' : 'New OPD Rx', body:`${name} — prescription added`, time:ts(), read:false });
   }
-  S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'New Patient Admitted', body:`${name} assigned to you — Bed ${bed}`, time:ts(), read:false });
+
+  if (isIPD) {
+    S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'New Patient Admitted', body:`${name} assigned to you — Bed ${bed}`, time:ts(), read:false });
+  }
 
   // Push to backend if live
   if (IS_LIVE) {
@@ -2030,22 +2195,22 @@ async function submitAdmit() {
       phone: document.getElementById('ad-phone').value.trim(),
       diagnosis: diag, icd, bed,
       doctor_id: docId, nurse_id: nurseId,
-      admission_type: document.getElementById('ad-type').value,
+      admission_type: admType,
       chief_complaint: cc,
-      allergies: document.getElementById('ad-allergy').value.trim() || 'None Known',
-      blood_group: document.getElementById('ad-bg').value,
-      status: 'Active'
+      allergies: allergy || 'None Known',
+      blood_group: bg,
+      status: isIPD ? 'Active' : 'OPD'
     });
     if (liveResult) {
-      showToast(`${name} admitted ✓ (saved to server)`, 'info');
+      showToast(`${name} ${isIPD ? 'admitted to IPD' : 'consultation saved'} ✓`, 'info');
     } else {
-      showToast(`${name} admitted (local only — server sync failed)`, 'warn');
+      showToast(`Saved locally — server sync failed`, 'warn');
     }
   } else {
-    showToast(`${name} admitted successfully`);
+    showToast(isIPD ? `${name} admitted to IPD` : `OPD consultation saved for ${name}`);
   }
 
-  showPayload({ event:'PATIENT_ADMITTED', patient_ehr_id:ehrId, patient_name:name, bed, assigned_doctor:doc?.name, assigned_nurse:nurse?.name });
+  showPayload({ event: isIPD ? 'PATIENT_ADMITTED_IPD' : 'OPD_CONSULTATION', patient_ehr_id: ehrId, patient_name: name, bed: bed || 'N/A', assigned_doctor: doc?.name, assigned_nurse: nurse?.name || 'N/A' });
   S.activePatientId = pid;
   S.activeTab[pid] = 'overview';
   save();
@@ -2211,7 +2376,7 @@ function toggleDSSection(id, show) {
   if (el) el.style.display = show ? 'block' : 'none';
 }
 
-function finalizeDischargeSummary(pid) {
+async function finalizeDischargeSummary(pid) {
   const p = S.patients.find(x=>x.id===pid);
   const cond = document.getElementById('ds-cond')?.value || 'Stable';
   p.status = 'Discharged';
@@ -2222,6 +2387,7 @@ function finalizeDischargeSummary(pid) {
   if (bed) bed.status = 'available';
   S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'Patient Discharged', body:`${p.name} discharged — Condition: ${cond}`, time:ts(), read:false });
   closeModal();
+  if (IS_LIVE) await apiPatch('/patients/' + pid + '/discharge', { condition: cond });
   showToast(`${p.name} discharged. Condition: ${cond}`);
   save();
 }
