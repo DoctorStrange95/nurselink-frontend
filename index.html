@@ -1164,6 +1164,41 @@ function openPatient(id) {
 function renderPatientDetail(id) {
   const p = S.patients.find(x => x.id === id);
   if (!p) return;
+  const doc = S.staff.find(s => s.id === p.doctorId);
+  const nurse = S.staff.find(s => s.id === p.nurseId);
+  const vitals = (S.vitals[id] || [])[0];
+  const role = S.currentRole;
+  const tab = S.activeTab[id] || 'overview';
+
+  const tabs = ['Overview','Vitals','Prescriptions','Labs','Notes','MAR','Chat'];
+  const tabContent = { overview:renderOverviewTab, vitals:renderVitalsTab, prescriptions:renderPrescriptionsTab, labs:renderLabsTab, notes:renderNotesTab, mar:renderMARTab, chat:renderChatTab };
+
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="flex items-center gap-3 mb-4">
+      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;save()">← Back</button>
+      <div>
+        <span class="section-title" style="font-size:16px">${p.name}</span>
+        <span class="text-muted" style="margin-left:10px">${p.age}${p.gender} | Bed ${p.bed} | ${p.ehrId}</span>
+      </div>
+      <span class="badge badge-${p.status==='Active'?'teal':'amber'}" style="margin-left:auto">${p.status}</span>
+      ${role==='Doctor' ? `<button class="btn btn-warn btn-sm" onclick="markDischarge('${id}')">📄 Discharge</button>` : ''}
+      <button class="btn btn-danger btn-sm" onclick="triggerSOS('${id}')">🚨 SOS</button>
+    </div>
+
+    <div class="tabs">
+      ${tabs.map(t => `<div class="tab ${tab===t.toLowerCase()?'active':''}" onclick="setTab('${id}','${t.toLowerCase()}')">${t}</div>`).join('')}
+    </div>
+
+    <div id="tab-content">
+      ${(tabContent[tab] || tabContent.overview)(id, p)}
+    </div>
+  `;
+}
+
+function renderPatientDetail(id) {
+  const p = S.patients.find(x => x.id === id);
+  if (!p) return;
   if (p.status === 'OPD') {
     renderOPDConsultation(id);
   } else {
