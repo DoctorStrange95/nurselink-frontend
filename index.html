@@ -946,14 +946,10 @@ function switchRole(role) {
 function renderSidebar() {
   const navItems = {
     Doctor: [
+      { icon:'📊', label:'Dashboard', view:'analytics' },
       { icon:'🏥', label:'My Patients', view:'patients' },
       { icon:'➕', label:'New Patient', view:'admit' },
-      { icon:'💊', label:'Prescriptions', view:'prescriptions' },
-      { icon:'🔬', label:'Lab Orders', view:'labs' },
-      { icon:'⚡', label:'Alerts', view:'alerts' },
       { icon:'📄', label:'Discharge', view:'discharge' },
-      { icon:'📈', label:'Analytics', view:'analytics' },
-      { icon:'🔢', label:'OPD Queue', view:'queue' },
     ],
     Nurse: [
       { icon:'🏥', label:'My Patients', view:'patients' },
@@ -1057,12 +1053,25 @@ function renderPatientList() {
   const role = S.currentRole;
   let allPts = S.patients;
   if (role === 'Nurse') {
-    const myName = getCurrentStaffName();
-    allPts = allPts.filter(p => { const n = S.staff.find(s=>s.id===p.nurseId); return n&&n.name===myName; });
+    if (IS_LIVE && window._loggedInUser) {
+      // Live mode: match by UUID
+      const myId = String(window._loggedInUser.id);
+      allPts = allPts.filter(p => String(p.nurseId) === myId);
+    } else {
+      const myName = getCurrentStaffName();
+      allPts = allPts.filter(p => { const n = S.staff.find(s=>s.id===p.nurseId); return n&&n.name===myName; });
+    }
   } else if (role === 'Doctor') {
-    const myName = getCurrentStaffName();
-    allPts = allPts.filter(p => { const d = S.staff.find(s=>s.id===p.doctorId); return d&&d.name===myName; });
+    if (IS_LIVE && window._loggedInUser) {
+      // Live mode: match by UUID
+      const myId = String(window._loggedInUser.id);
+      allPts = allPts.filter(p => String(p.doctorId) === myId);
+    } else {
+      const myName = getCurrentStaffName();
+      allPts = allPts.filter(p => { const d = S.staff.find(s=>s.id===p.doctorId); return d&&d.name===myName; });
+    }
   }
+  // Admin and others see ALL patients
 
   const ipdPts = allPts.filter(p=>p.status==='Active');
   const opdPts = allPts.filter(p=>p.status==='OPD');
@@ -1153,7 +1162,7 @@ function renderPatientCard(p) {
 
 function openPatient(id) {
   S.activePatientId = id;
-  if (!S.activeTab[id]) S.activeTab[id] = 'overview';
+  if (!S.activeTab[id]) S.activeTab[id] = S.currentRole === 'Doctor' ? 'round' : 'overview';
   save();
   loadPatientData(id);
 }
@@ -1535,8 +1544,12 @@ function renderIPDDetail(id) {
     if (dp) { const d = new Date(`${dp[2]}-${dp[1]}-${dp[0]}`); los = Math.max(0,Math.round((Date.now()-d.getTime())/(1000*60*60*24))); }
   } catch(e) {}
 
-  const tabs = ['Overview','Vitals','Prescriptions','Labs','Notes','MAR','Chat'];
-  const tabContent = { overview:renderOverviewTab, vitals:renderVitalsTab, prescriptions:renderPrescriptionsTab, labs:renderLabsTab, notes:renderNotesTab, mar:renderMARTab, chat:renderChatTab };
+  const tabs = S.currentRole === 'Doctor'
+    ? ['Round','Orders','Comms']
+    : ['Overview','Vitals','Prescriptions','Labs','Notes','MAR','Chat'];
+  const tabContent = S.currentRole === 'Doctor'
+    ? { round:renderRoundTab, orders:renderOrdersTab, comms:renderCommsTab }
+    : { overview:renderOverviewTab, vitals:renderVitalsTab, prescriptions:renderPrescriptionsTab, labs:renderLabsTab, notes:renderNotesTab, mar:renderMARTab, chat:renderChatTab };
 
   const main = document.getElementById('main');
   main.innerHTML = `
@@ -1671,6 +1684,7 @@ function renderOverviewTab(id, p) {
         <button class="btn btn-primary" onclick="showAddConsultModal('${id}')">📝 Add Consultation Note</button>
         <button class="btn btn-primary" onclick="showAddMedModal('${id}')">💊 Add Medicine</button>
         <button class="btn btn-primary" onclick="showOrderLabModal('${id}')">🔬 Order Investigation</button>
+        <button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">📊 Record Vitals</button>
       </div>
     </div>` : ''}
 
@@ -1684,6 +1698,280 @@ function renderOverviewTab(id, p) {
     </div>` : ''}
   `;
 }
+
+
+// ============================================================
+// DOCTOR 3-TAB SYSTEM
+// ============================================================
+
+// TAB 1: ROUND — Patient summary + latest vitals + quick actions + consult note
+function renderRoundTab(id, p) {
+  const doc = S.staff.find(s => s.id === p.doctorId);
+  const nurse = S.staff.find(s => s.id === p.nurseId);
+  const vitals = (S.vitals[id] || [])[0];
+  const prevVitals = (S.vitals[id] || [])[1];
+  const rxCount = (S.prescriptions[id] || []).filter(r=>r.status==='active').length;
+  const labCount = (S.labOrders[id] || []).length;
+  const pendingLabs = (S.labOrders[id] || []).filter(l=>l.status!=='Result Available').length;
+  const consults = S.consultNotes[id] || [];
+
+  // Trend arrows
+  function trend(curr, prev, label) {
+    if (!curr || !prev) return '';
+    const diff = curr - prev;
+    if (Math.abs(diff) < 2) return '<span style="color:var(--text-muted)">→</span>';
+    return diff > 0
+      ? `<span style="color:var(--red)">↑${Math.abs(diff)}</span>`
+      : `<span style="color:var(--emerald)">↓${Math.abs(diff)}</span>`;
+  }
+
+  return `
+    <!-- PATIENT HEADER STRIP -->
+    <div style="background:var(--navy);color:white;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="flex:1">
+        <div style="font-size:17px;font-weight:800">${p.name}</div>
+        <div style="font-size:12px;opacity:.65;margin-top:2px">${p.age}${p.gender} · Bed ${p.bed||'—'} · ${p.ehrId} · ${p.admissionType||'IPD'}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;opacity:.5;text-transform:uppercase;letter-spacing:.5px">Diagnosis</div>
+        <div style="font-weight:700;font-size:13px">${p.diagnosis||'—'}</div>
+        <div style="font-size:10px;font-family:var(--mono);opacity:.5">${p.icd||''}</div>
+      </div>
+      ${p.allergies && p.allergies!=='None Known' ? `<div style="background:rgba(198,40,40,.25);border:1px solid rgba(198,40,40,.5);border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700">⚠ ${p.allergies}</div>` : ''}
+    </div>
+
+    <div class="grid-2" style="gap:12px;margin-bottom:14px">
+      <!-- LATEST VITALS -->
+      <div class="card">
+        <div class="card-header" style="padding:10px 14px">
+          <h3>Latest Vitals</h3>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="text-muted text-sm">${vitals ? vitals.time : '—'}</span>
+            <button class="btn btn-primary btn-sm" onclick="showRecordVitalsModal('${id}')">+ Record</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:10px 14px">
+          ${vitals ? `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${[
+              ['BP', vitals.bpSys+'/'+vitals.bpDia, 'mmHg', vitals.bpSys>180?'critical-box':vitals.bpSys>160?'warn-box':'', vitals.bpSys>180?'critical-val':vitals.bpSys>160?'warn-val':'', prevVitals?trend(vitals.bpSys,prevVitals.bpSys,'bp'):''],
+              ['SpO₂', vitals.spo2+'%', '', vitals.spo2<92?'critical-box':vitals.spo2<95?'warn-box':'', vitals.spo2<92?'critical-val':vitals.spo2<95?'warn-val':'normal-val', prevVitals?trend(vitals.spo2,prevVitals.spo2,'spo2'):''],
+              ['Pulse', vitals.pulse, 'bpm', vitals.pulse>130||vitals.pulse<50?'critical-box':vitals.pulse>110?'warn-box':'', '', prevVitals?trend(vitals.pulse,prevVitals.pulse,'pulse'):''],
+              ['Temp', vitals.temp+'°C', '', vitals.temp>39.5?'critical-box':vitals.temp>38.5?'warn-box':'', vitals.temp>39.5?'critical-val':vitals.temp>38.5?'warn-val':'', ''],
+              ['RR', vitals.rr, '/min', vitals.rr>25?'warn-box':'', vitals.rr>25?'warn-val':'', ''],
+              ['UO', vitals.uo, 'ml/hr', vitals.uo<20?'warn-box':'', '', ''],
+              ['GCS', vitals.gcs+'/15', '', vitals.gcs<9?'critical-box':vitals.gcs<13?'warn-box':'', '', ''],
+              ['Glucose', vitals.glucose, 'mg/dL', '', '', ''],
+            ].map(([l,v,u,box,cls,tr])=>`
+              <div class="vital-box ${box}" style="padding:8px;text-align:left;display:flex;align-items:center;justify-content:space-between">
+                <div>
+                  <div class="vb-label">${l}</div>
+                  <div class="vb-value ${cls}" style="font-size:16px">${v} <span style="font-size:10px;font-weight:400;color:var(--text-muted)">${u}</span></div>
+                </div>
+                <div style="font-size:13px">${tr}</div>
+              </div>
+            `).join('')}
+          </div>
+          ${vitals.notes ? `<div class="text-muted text-sm" style="margin-top:8px;padding:6px 8px;background:var(--panel);border-radius:6px">📝 ${vitals.notes} <span style="font-size:10px">— ${vitals.nurse}</span></div>` : ''}
+          ` : `<div class="text-muted" style="padding:20px;text-align:center">No vitals recorded yet<br><button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="showRecordVitalsModal('${id}')">Record Now</button></div>`}
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Stats + Quick Actions -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <!-- Stats strip -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          ${[
+            [rxCount,'Active Rx','var(--teal)','orders'],
+            [labCount,'Investigations',pendingLabs>0?'var(--amber)':'var(--emerald)','orders'],
+            [(S.vitals[id]||[]).length,'Vitals Logs','var(--indigo)','round'],
+          ].map(([n,l,c,tab])=>`
+            <div onclick="setTab('${id}','${tab}')" style="background:white;border:1.5px solid var(--border);border-radius:8px;padding:12px;text-align:center;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='${c}'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:26px;font-weight:800;color:${c}">${n}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${l}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- Quick actions — ALL in one place -->
+        <div class="card" style="flex:1">
+          <div class="card-header" style="padding:10px 14px"><h3>Actions</h3></div>
+          <div class="card-body" style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-primary" style="width:100%;justify-content:flex-start" onclick="showAddConsultModal('${id}')">📝 Add Consultation Note</button>
+            <button class="btn btn-primary" style="width:100%;justify-content:flex-start" onclick="setTab('${id}','orders');setTimeout(()=>showAddMedModal('${id}'),50)">💊 Prescribe Medicine</button>
+            <button class="btn btn-primary" style="width:100%;justify-content:flex-start" onclick="setTab('${id}','orders');setTimeout(()=>showOrderLabModal('${id}'),50)">🔬 Order Investigation</button>
+            <button class="btn btn-outline" style="width:100%;justify-content:flex-start" onclick="setTab('${id}','comms')">💬 Chat with Nurse</button>
+            ${S.role==='Doctor'||S.currentRole==='Doctor' ? `<button class="btn btn-warn" style="width:100%;justify-content:flex-start" onclick="markDischarge('${id}')">📄 Initiate Discharge</button>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONSULT NOTES TIMELINE -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Consultation Notes</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAddConsultModal('${id}')">+ Add Note</button>
+      </div>
+      <div class="card-body" style="${consults.length ? 'padding:0' : ''}">
+        ${consults.length === 0 ? '<div class="text-muted">No consultation notes yet.</div>' :
+          consults.map((c,i) => `
+            <div style="padding:14px 16px;${i>0?'border-top:1px solid var(--border)':''}">
+              <div class="flex items-center justify-between mb-2">
+                <span class="fw-600 text-sm">${c.by}</span>
+                <span class="text-muted" style="font-family:var(--mono);font-size:11px">${c.time}</span>
+              </div>
+              ${c.subjective ? `<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase">S</span> <span style="font-size:13px">${c.subjective}</span></div>` : ''}
+              ${c.objective ? `<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--indigo);text-transform:uppercase">O</span> <span style="font-size:13px">${c.objective}</span></div>` : ''}
+              ${c.assessment ? `<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase">A</span> <span style="font-size:13px;font-weight:600">${c.assessment}</span></div>` : ''}
+              ${c.plan ? `<div><span style="font-size:10px;font-weight:700;color:var(--emerald);text-transform:uppercase">P</span> <span style="font-size:13px">${c.plan}</span></div>` : ''}
+            </div>
+          `).join('')
+        }
+      </div>
+    </div>
+  `;
+}
+
+// TAB 2: ORDERS — Prescriptions + Labs + MAR all in one scrollable page
+function renderOrdersTab(id, p) {
+  const rxList = S.prescriptions[id] || [];
+  const activeRx = rxList.filter(r=>r.status==='active');
+  const dcRx = rxList.filter(r=>r.status==='discontinued');
+  const labs = S.labOrders[id] || [];
+  const marLog = S.mar[id] || [];
+
+  return `
+    <!-- PRESCRIPTIONS -->
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="fw-600" style="font-size:15px">💊 Active Prescriptions <span class="badge badge-teal">${activeRx.length}</span></div>
+      </div>
+      <button class="btn btn-primary" onclick="showAddMedModal('${id}')">+ Add Drug</button>
+    </div>
+
+    ${activeRx.length === 0 ? '<div class="text-muted mb-4">No active prescriptions.</div>' :
+      activeRx.map(rx => {
+        const lastMAR = marLog.find(m=>m.rxId===rx.id);
+        return `
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:white;border-radius:9px;border:1px solid var(--border);border-left:3px solid var(--teal);margin-bottom:7px">
+            <div style="flex:1">
+              <div style="font-weight:700;font-size:13px">${rx.drug}</div>
+              <div style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">${rx.dose} · ${rx.route} · ${rx.freq} · ${rx.duration}</div>
+              ${rx.instructions ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">⚠ ${rx.instructions}</div>` : ''}
+              ${lastMAR ? `<div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:3px">MAR: ${lastMAR.status} by ${lastMAR.by} @ ${lastMAR.time}</div>` : ''}
+            </div>
+            <span class="badge ${lastMAR?.status==='Given'?'badge-green':lastMAR?.status==='Not Available'?'badge-red':'badge-amber'}">${lastMAR?.status||'Pending'}</span>
+            <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="discontinueMed('${id}','${rx.id}')">DC</button>
+          </div>
+        `;
+      }).join('')
+    }
+
+    ${dcRx.length > 0 ? `
+    <details style="margin-bottom:14px">
+      <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;padding:6px 0">Discontinued (${dcRx.length})</summary>
+      ${dcRx.map(rx=>`<div style="padding:7px 12px;font-size:12px;color:var(--text-muted);text-decoration:line-through;background:var(--panel);border-radius:6px;margin-top:4px">${rx.drug} ${rx.dose} — DC'd by ${rx.dcBy||'Doctor'}</div>`).join('')}
+    </details>` : ''}
+
+    <hr class="divider">
+
+    <!-- INVESTIGATIONS -->
+    <div class="flex items-center justify-between mb-3">
+      <div class="fw-600" style="font-size:15px">🔬 Investigations <span class="badge badge-teal">${labs.length}</span></div>
+      <button class="btn btn-primary" onclick="showOrderLabModal('${id}')">+ Order</button>
+    </div>
+
+    ${labs.length === 0 ? '<div class="text-muted mb-4">No investigations ordered.</div>' :
+      labs.map(l => `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:white;border-radius:9px;border:1px solid var(--border);margin-bottom:7px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${l.test} <span style="font-size:10px;color:var(--text-muted)">${l.category||''}</span></div>
+            <div style="font-size:11px;color:var(--text-muted)">By ${l.orderedBy} · ${l.time}</div>
+            ${l.result ? `<div style="margin-top:6px;padding:7px 10px;background:var(--panel);border-radius:6px;font-size:12px;font-family:var(--mono);color:${l.resultStatus==='Critical'?'var(--red)':l.resultStatus==='Abnormal'?'var(--warn)':'var(--success)'}">${l.result}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <span class="badge ${l.priority==='STAT'?'badge-red':l.priority==='Urgent'?'badge-amber':'badge-teal'}">${l.priority}</span>
+            <span class="badge ${l.status==='Result Available'?'badge-green':l.status==='Processing'?'badge-amber':'badge-indigo'}">${l.status}</span>
+          </div>
+        </div>
+      `).join('')
+    }
+
+    <hr class="divider">
+
+    <!-- MAR LOG (read-only for Doctor) -->
+    <div class="fw-600 mb-3" style="font-size:15px">📋 MAR Summary</div>
+    ${activeRx.length === 0 ? '<div class="text-muted">No active medications.</div>' :
+      activeRx.map(rx => {
+        const entries = marLog.filter(m=>m.rxId===rx.id).slice(0,3);
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--panel);border-radius:8px;margin-bottom:6px">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${rx.drug}</div>
+              <div style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">${rx.dose} · ${rx.freq}</div>
+            </div>
+            <div>${entries.length === 0
+              ? '<span class="badge badge-amber">Not Given Yet</span>'
+              : entries.map(e=>`<span class="badge ${e.status==='Given'?'badge-green':e.status==='Not Available'?'badge-red':'badge-amber'}" style="margin-left:3px">${e.status} ${e.time}</span>`).join('')
+            }</div>
+          </div>
+        `;
+      }).join('')
+    }
+  `;
+}
+
+// TAB 3: COMMS — Chat + Nursing Notes in one place
+function renderCommsTab(id, p) {
+  const msgs = S.chat[id] || [];
+  const nursingNotes = S.nursingNotes[id] || [];
+  const myName = getCurrentStaffName();
+
+  return `
+    <div class="grid-2" style="gap:14px">
+      <!-- CHAT -->
+      <div class="card">
+        <div class="card-header"><h3>💬 Chat with Nurse</h3></div>
+        <div class="card-body" style="padding:12px">
+          <div class="chat-area" id="chat-area-${id}" style="height:220px">
+            ${msgs.length===0 ? '<div class="text-muted text-sm" style="text-align:center;padding:20px">No messages yet</div>' : ''}
+            ${msgs.map(m => `
+              <div class="chat-msg ${m.name===myName?'sent':'received'}">
+                <div class="chat-bubble">${m.msg}</div>
+                <div class="chat-meta">${m.name} · ${m.time}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="flex gap-2 mt-2">
+            <input class="form-control" id="chat-input-${id}" placeholder="Message to nurse..." style="flex:1;font-size:13px" onkeydown="if(event.key==='Enter')sendChat('${id}')">
+            <button class="btn btn-primary" onclick="sendChat('${id}')">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- NURSING NOTES -->
+      <div class="card">
+        <div class="card-header"><h3>🩺 Nursing Notes</h3></div>
+        <div class="card-body" style="padding:0;max-height:320px;overflow-y:auto">
+          ${nursingNotes.length === 0
+            ? '<div class="text-muted" style="padding:16px">No nursing notes yet.</div>'
+            : nursingNotes.map(n => `
+              <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="fw-600 text-sm">${n.by}</span>
+                  <span class="text-muted" style="font-size:10px;font-family:var(--mono)">${n.time}</span>
+                </div>
+                <div style="font-size:13px">${n.note}</div>
+              </div>
+            `).join('')
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 
 // VITALS TAB
 function renderVitalsTab(id, p) {
@@ -1706,7 +1994,7 @@ function renderVitalsTab(id, p) {
         <div class="fw-600">Vitals History</div>
         <div class="text-muted">${vlist.length} entries recorded</div>
       </div>
-      ${hasNurse ? `<button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">➕ Record Vitals</button>` : ''}
+      ${(hasNurse||hasDoctor) ? '<button class="btn btn-primary" onclick="showRecordVitalsModal(\'' + id + '\')">➕ Record Vitals</button>' : ''}
     </div>
 
     ${bpVals.length > 1 ? `
@@ -2807,11 +3095,22 @@ async function finalizeDischargeSummary(pid) {
 
 // NURSE VIEW — VITALS PAGE
 function renderVitalsPage() {
-  const myName = getCurrentStaffName();
-  const myPts = S.patients.filter(p=>{
-    const n = S.staff.find(s=>s.id===p.nurseId);
-    return n && n.name === myName;
-  });
+  let myPts;
+  if (S.currentRole === 'Doctor') {
+    if (IS_LIVE && window._loggedInUser) {
+      const myId = String(window._loggedInUser.id);
+      myPts = S.patients.filter(p=>String(p.doctorId)===myId && p.status==='Active');
+    } else {
+      const myName = getCurrentStaffName();
+      myPts = S.patients.filter(p=>{ const d=S.staff.find(s=>s.id===p.doctorId); return d&&d.name===myName; });
+    }
+  } else {
+    const myName = getCurrentStaffName();
+    myPts = S.patients.filter(p=>{
+      const n = S.staff.find(s=>s.id===p.nurseId);
+      return n && n.name === myName;
+    });
+  }
   const main = document.getElementById('main');
   main.innerHTML = `
     <div class="section-title">Vitals Entry</div>
@@ -3310,9 +3609,224 @@ function renderAllLabs() {
 }
 
 // ============================================================
-// ANALYTICS PAGE
+// ANALYTICS / DOCTOR DASHBOARD
 // ============================================================
 function renderAnalyticsPage() {
+  const main = document.getElementById('main');
+  const role = S.currentRole;
+
+  // ── ADMIN view stays as before ──
+  if (role !== 'Doctor') {
+    renderAdminDashboard();
+    return;
+  }
+
+  // ── DOCTOR DASHBOARD (PRD-aligned) ──
+  const myName = getCurrentStaffName();
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+
+  const myPts = S.patients.filter(p => {
+    if (myId) return String(p.doctorId) === myId;
+    const d = S.staff.find(s=>s.id===p.doctorId);
+    return d && d.name === myName;
+  });
+
+  const ipdActive   = myPts.filter(p=>p.status==='Active');
+  const opdToday    = myPts.filter(p=>p.status==='OPD');
+  const discharged  = myPts.filter(p=>p.status==='Discharged');
+  const allPatients = myPts;
+
+  // Avg LOS
+  let totalLOS = 0, losCount = 0;
+  ipdActive.forEach(p => {
+    try {
+      const parts = p.admitTime?.split(' ');
+      const dp = parts?.[0]?.split('/');
+      if (dp) { const d = new Date(`${dp[2]}-${dp[1]}-${dp[0]}`); const los = Math.max(0,Math.round((Date.now()-d.getTime())/(1000*60*60*24))); totalLOS+=los; losCount++; }
+    } catch(e) {}
+  });
+  const avgLOS = losCount > 0 ? (totalLOS/losCount).toFixed(1) : '—';
+
+  // Unacked alerts for my patients
+  const myAlerts = S.alerts.filter(a => myPts.find(p=>p.id===a.patientId) && !a.acked);
+
+  // Diagnosis frequency
+  const diagFreq = {};
+  allPatients.forEach(p => { if(p.diagnosis) diagFreq[p.diagnosis] = (diagFreq[p.diagnosis]||0)+1; });
+  const topDiags = Object.entries(diagFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Disease burden (IDSP)
+  const idsCategories = { Fever:0, RTI:0, UTI:0, Cardiac:0, Diabetes:0, COPD:0, Other:0 };
+  allPatients.forEach(p => {
+    const d = (p.diagnosis||'').toLowerCase();
+    if (d.includes('fever')||d.includes('malaria')||d.includes('dengue')||d.includes('typhoid')) idsCategories.Fever++;
+    else if (d.includes('pneumonia')||d.includes('copd')||d.includes('asthma')||d.includes('bronch')) idsCategories.COPD++;
+    else if (d.includes('uti')||d.includes('urinary')||d.includes('sepsis')) idsCategories.UTI++;
+    else if (d.includes('hypert')||d.includes('cardiac')||d.includes('heart')||d.includes('ami')) idsCategories.Cardiac++;
+    else if (d.includes('diabet')||d.includes('sugar')||d.includes('dka')) idsCategories.Diabetes++;
+    else if (d.includes('rti')||d.includes('urti')||d.includes('lrti')) idsCategories.RTI++;
+    else if (p.diagnosis) idsCategories.Other++;
+  });
+  const maxBurden = Math.max(...Object.values(idsCategories), 1);
+
+  main.innerHTML = `
+    <!-- HEADER -->
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="section-title">Good ${new Date().getHours()<12?'Morning':new Date().getHours()<17?'Afternoon':'Evening'}, ${myName.replace('Dr. ','Dr.')}.</div>
+        <div class="section-sub">${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+      </div>
+      <button class="btn btn-primary" onclick="setNav('admit')">➕ New Patient</button>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="grid-3 mb-4" style="grid-template-columns:repeat(5,1fr)">
+      ${[
+        [ipdActive.length,   'Active IPD',     'var(--teal)',   'patients'],
+        [opdToday.length,    'OPD Today',      'var(--indigo)', 'patients'],
+        [discharged.length,  'Discharged',     'var(--emerald)','discharge'],
+        [avgLOS,             'Avg LOS (days)', 'var(--amber)',  null],
+        [myAlerts.length,    'Active Alerts',  myAlerts.length>0?'var(--red)':'var(--emerald)', 'alerts'],
+      ].map(([n,l,c,nav])=>`
+        <div class="card" style="cursor:${nav?'pointer':'default'}" ${nav?`onclick="setNav('${nav}')"`:''}
+          onmouseover="${nav?`this.style.boxShadow='var(--shadow-lg)'`:''}"
+          onmouseout="${nav?`this.style.boxShadow='var(--shadow)'`:''}">
+          <div class="card-body" style="text-align:center;padding:14px">
+            <div style="font-size:30px;font-weight:800;color:${c}">${n}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${l}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- ALERTS BANNER (if any) -->
+    ${myAlerts.length > 0 ? `
+    <div style="background:#FFEBEE;border:1.5px solid var(--red);border-radius:10px;padding:12px 16px;margin-bottom:14px">
+      <div style="font-weight:700;color:var(--red);margin-bottom:8px">⚡ ${myAlerts.length} Unacknowledged Alert${myAlerts.length>1?'s':''}</div>
+      ${myAlerts.slice(0,3).map(a=>{
+        const pt = myPts.find(p=>p.id===a.patientId);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(198,40,40,.15)">
+          <div><span style="font-weight:700;font-size:12px">${a.title}</span> <span style="font-size:12px;color:var(--text-muted)">— ${pt?.name||''} · ${a.time}</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="openPatient('${a.patientId}')">Open →</button>
+            <button class="btn btn-outline btn-sm" style="font-size:11px;color:var(--emerald)" onclick="ackAlert('${a.id}')">Ack</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <div class="grid-2 mb-4">
+      <!-- ACTIVE IPD PATIENTS -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🛏 Active IPD Patients</h3>
+          <button class="btn btn-primary btn-sm" onclick="setNav('patients')">View All</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>Patient</th><th>Bed</th><th>LOS</th><th>Latest Vitals</th><th></th></tr></thead>
+            <tbody>
+              ${ipdActive.length === 0
+                ? '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:16px">No active IPD patients</td></tr>'
+                : ipdActive.map(p => {
+                    const v = (S.vitals[p.id]||[])[0];
+                    let los = 0;
+                    try { const dp=p.admitTime?.split(' ')?.[0]?.split('/'); if(dp){const d=new Date(`${dp[2]}-${dp[1]}-${dp[0]}`);los=Math.max(0,Math.round((Date.now()-d.getTime())/(1000*60*60*24)));}} catch(e){}
+                    const alerts = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
+                    return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer">
+                      <td>
+                        <div class="fw-600">${p.name}</div>
+                        <div class="text-muted" style="font-size:10px">${p.diagnosis||'—'}</div>
+                        ${alerts>0?`<span class="badge badge-red">⚠ ${alerts}</span>`:''}
+                      </td>
+                      <td>${p.bed||'—'}</td>
+                      <td>${los}d</td>
+                      <td>${v ? `<span class="${v.bpSys>180?'critical-val':v.bpSys>160?'warn-val':''}" style="font-family:var(--mono);font-size:11px">${v.bpSys}/${v.bpDia} · ${v.spo2}%</span>` : '<span class="text-muted">—</span>'}</td>
+                      <td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient('${p.id}')">Round →</button></td>
+                    </tr>`;
+                  }).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- OPD QUEUE + Disease Burden -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <!-- OPD Today -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🩺 OPD Queue Today</h3>
+            <button class="btn btn-primary btn-sm" onclick="setNav('admit')">+ Add Patient</button>
+          </div>
+          <div class="card-body" style="padding:0;max-height:160px;overflow-y:auto">
+            ${opdToday.length === 0
+              ? '<div class="text-muted" style="padding:14px">No OPD patients today</div>'
+              : opdToday.map((p,i) => `
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openPatient('${p.id}')">
+                  <div style="width:24px;height:24px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</div>
+                  <div style="flex:1">
+                    <div class="fw-600 text-sm">${p.name}</div>
+                    <div class="text-muted" style="font-size:11px">${p.chiefComplaint||'No complaint noted'}</div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient('${p.id}')">Consult →</button>
+                </div>
+              `).join('')
+            }
+          </div>
+        </div>
+
+        <!-- Community Disease Burden (IDSP) -->
+        <div class="card">
+          <div class="card-header"><h3>🌍 Disease Burden Snapshot</h3><span class="badge badge-indigo">Weekly</span></div>
+          <div class="card-body" style="padding:12px 14px">
+            ${Object.entries(idsCategories).filter(([,v])=>v>0).length === 0
+              ? '<div class="text-muted text-sm">No data yet — admit patients to see burden chart</div>'
+              : Object.entries(idsCategories).filter(([,v])=>v>0).map(([cat,count]) => `
+                <div style="margin-bottom:8px">
+                  <div class="flex items-center justify-between mb-1">
+                    <span style="font-size:12px;font-weight:600">${cat}</span>
+                    <span style="font-size:12px;font-family:var(--mono)">${count}</span>
+                  </div>
+                  <div class="workload-bar" style="height:6px">
+                    <div class="workload-fill" style="width:${Math.round((count/maxBurden)*100)}%;background:var(--teal)"></div>
+                  </div>
+                </div>
+              `).join('')
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP DIAGNOSES -->
+    ${topDiags.length > 0 ? `
+    <div class="card mb-4">
+      <div class="card-header"><h3>📋 Most Common Diagnoses</h3></div>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Diagnosis</th><th>Count</th><th>Frequency</th></tr></thead>
+          <tbody>
+            ${topDiags.map(([diag,count],i)=>`
+              <tr>
+                <td class="text-muted">${i+1}</td>
+                <td class="fw-600">${diag}</td>
+                <td class="mono">${count}</td>
+                <td style="width:200px">
+                  <div class="workload-bar" style="height:6px">
+                    <div class="workload-fill" style="width:${Math.round((count/topDiags[0][1])*100)}%"></div>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  `;
+}
+
+function renderAdminDashboard() {
   const main = document.getElementById('main');
   const active = S.patients.filter(p=>p.status==='Active').length;
   const opd = S.patients.filter(p=>p.status==='OPD').length;
@@ -3321,102 +3835,50 @@ function renderAnalyticsPage() {
   const occupiedBeds = S.beds.filter(b=>b.status==='occupied').length;
   const occupancyPct = Math.round((occupiedBeds/totalBeds)*100);
   const unackedAlerts = S.alerts.filter(a=>!a.acked).length;
-  // Doctor workload
   const doctors = S.staff.filter(s=>s.role==='Doctor');
-  const nurses = S.staff.filter(s=>s.role==='Nurse');
   main.innerHTML = `
     <div class="section-title">Analytics Dashboard</div>
-    <div class="section-sub">Institution-wide overview — real time</div>
-
+    <div class="section-sub">Institution-wide overview</div>
     <div class="grid-3 mb-4">
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--teal)">${active}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Active IPD Patients</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--indigo)">${opd}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">OPD Consultations Today</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--emerald)">${discharged}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Discharged</div>
-        </div>
-      </div>
+      <div class="card"><div class="card-body" style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--teal)">${active}</div><div class="text-muted text-sm mt-2">Active IPD</div></div></div>
+      <div class="card"><div class="card-body" style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--indigo)">${opd}</div><div class="text-muted text-sm mt-2">OPD Today</div></div></div>
+      <div class="card"><div class="card-body" style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--emerald)">${discharged}</div><div class="text-muted text-sm mt-2">Discharged</div></div></div>
     </div>
-
     <div class="grid-2 mb-4">
       <div class="card">
-        <div class="card-header"><h3>🛏 Bed Occupancy</h3></div>
+        <div class="card-header"><h3>🛏 Bed Occupancy — ${occupancyPct}%</h3></div>
         <div class="card-body">
-          <div style="font-size:32px;font-weight:800;color:${occupancyPct>85?'var(--red)':occupancyPct>60?'var(--amber)':'var(--emerald)'}">${occupancyPct}%</div>
-          <div class="text-muted mb-3">${occupiedBeds} of ${totalBeds} beds occupied</div>
-          <div class="workload-bar" style="height:12px">
-            <div class="workload-fill ${occupancyPct>85?'high':occupancyPct>60?'med':''}" style="width:${occupancyPct}%"></div>
-          </div>
-          <div class="mt-4">
-            <div class="section-title" style="font-size:14px;margin-bottom:8px">Bed Grid</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:8px">
-              ${S.beds.map(b=>`
-                <div onclick="openBedPatient('${b.id}')" style="background:${b.status==='available'?'#E8F5E9':b.status==='occupied'?'#FFEBEE':'#FFF3E0'};border:1.5px solid ${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'};border-radius:8px;padding:8px;text-align:center;cursor:${b.status==='occupied'?'pointer':'default'};font-size:11px;font-weight:700;color:${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'}">
-                  ${b.id}<br><span style="font-weight:400;font-size:10px">${b.status==='available'?'Free':b.status==='occupied'?'Occ.':'Res.'}</span>
-                </div>
-              `).join('')}
-            </div>
+          <div class="workload-bar" style="height:12px;margin-bottom:12px"><div class="workload-fill ${occupancyPct>85?'high':occupancyPct>60?'med':''}" style="width:${occupancyPct}%"></div></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:8px">
+            ${S.beds.map(b=>`<div onclick="openBedPatient('${b.id}')" style="background:${b.status==='available'?'#E8F5E9':'#FFEBEE'};border:1.5px solid ${b.status==='available'?'var(--emerald)':'var(--red)'};border-radius:8px;padding:8px;text-align:center;cursor:pointer;font-size:11px;font-weight:700;color:${b.status==='available'?'var(--emerald)':'var(--red)'}"> ${b.id}<br><span style="font-weight:400;font-size:10px">${b.status==='available'?'Free':'Occ.'}</span></div>`).join('')}
           </div>
         </div>
       </div>
-
       <div class="card">
-        <div class="card-header"><h3>⚡ Unacknowledged Alerts</h3></div>
+        <div class="card-header"><h3>👥 Doctor Workload</h3></div>
         <div class="card-body">
-          <div style="font-size:32px;font-weight:800;color:${unackedAlerts>0?'var(--red)':'var(--emerald)'}">${unackedAlerts}</div>
-          <div class="text-muted mb-3">pending acknowledgement</div>
-          <div class="card-header" style="margin:0 -16px"><h3>👥 Staff On Duty</h3></div>
-          <div class="mt-3">
-            ${doctors.map(d=>{
-              const pts = S.patients.filter(p=>p.doctorId===d.id&&p.status==='Active').length;
-              return `<div class="flex items-center justify-between mb-2">
-                <div><div style="font-size:13px;font-weight:600">${d.name}</div><div class="text-muted">${d.dept}</div></div>
-                <span class="badge ${pts>3?'badge-red':pts>1?'badge-amber':'badge-teal'}">${pts} pts</span>
-              </div>`;
-            }).join('')}
-          </div>
+          ${doctors.map(d=>{const c=S.patients.filter(p=>p.doctorId===d.id&&p.status==='Active').length;return `<div class="mb-3"><div class="flex items-center justify-between mb-1"><span class="fw-600 text-sm">${d.name}</span><span class="text-muted text-sm">${c} pts</span></div><div class="workload-bar"><div class="workload-fill ${c>=8?'high':c>=5?'med':''}" style="width:${Math.min(c*10,100)}%"></div></div></div>`;}).join('')}
         </div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-header"><h3>🏥 Active IPD Patients</h3></div>
+      <div class="card-header"><h3>🏥 All Active Patients</h3></div>
       <div class="card-body" style="padding:0">
         <table class="data-table">
-          <thead><tr><th>UHID</th><th>Patient</th><th>Bed</th><th>Doctor</th><th>Diagnosis</th><th>LOS</th><th>Alerts</th></tr></thead>
+          <thead><tr><th>Patient</th><th>Bed</th><th>Doctor</th><th>Diagnosis</th><th>Alerts</th></tr></thead>
           <tbody>
             ${S.patients.filter(p=>p.status==='Active').map(p=>{
-              const doc = S.staff.find(s=>s.id===p.doctorId);
-              const alerts = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
-              const admitDate = new Date(p.admitTime?.split(' ').reverse().join('-') || Date.now());
-              const los = Math.max(0,Math.round((Date.now()-admitDate.getTime())/(1000*60*60*24)));
-              return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer">
-                <td class="mono">${p.ehrId||'—'}</td>
-                <td class="fw-600">${p.name}</td>
-                <td>${p.bed||'—'}</td>
-                <td>${doc?.name||'—'}</td>
-                <td style="font-size:11px">${p.diagnosis}</td>
-                <td>${los}d</td>
-                <td>${alerts>0?`<span class="badge badge-red">${alerts}</span>`:'—'}</td>
-              </tr>`;
-            }).join('')||'<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px">No active IPD patients</td></tr>'}
+              const doc=S.staff.find(s=>s.id===p.doctorId);
+              const alerts=S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
+              return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer"><td class="fw-600">${p.name}</td><td>${p.bed||'—'}</td><td>${doc?.name||'—'}</td><td style="font-size:11px">${p.diagnosis}</td><td>${alerts>0?`<span class="badge badge-red">${alerts}</span>`:'—'}</td></tr>`;
+            }).join('')||'<tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px">No active patients</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
   `;
 }
+
 
 function openBedPatient(bedId) {
   const p = S.patients.find(x=>x.bed===bedId&&x.status==='Active');
@@ -3824,6 +4286,13 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 updateClock();
+
+// Keep Render server awake + Neon connection alive
+setInterval(async function() {
+  if (IS_LIVE && API_TOKEN) {
+    try { await fetch(API_BASE + '/health', {headers:{Authorization:'Bearer '+API_TOKEN}}); } catch(e) {}
+  }
+}, 240000); // ping every 4 minutes
 
 // Auto vitals simulation
 setInterval(() => {
