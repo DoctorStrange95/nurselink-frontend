@@ -829,7 +829,29 @@ let S = JSON.parse(localStorage.getItem('NL_STATE_V3')) || JSON.parse(JSON.strin
 
 function save() {
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
-  renderAll();
+  // Only do a full re-render if no modal is open and no patient is being consulted
+  // This prevents wiping half-filled forms
+  const modalOpen = !!document.getElementById('modal-container').innerHTML;
+  const activeView = S.activeNavItem[S.currentRole] || getDefaultView();
+  const formViews = ['admit','register'];
+  const inForm = formViews.includes(activeView) && !S.activePatientId;
+  const inOPDConsult = S.activePatientId &&
+    S.patients.find(p => p.id === S.activePatientId)?.status === 'OPD';
+
+  if (modalOpen || inForm || inOPDConsult) {
+    // Partial update only — don't touch main content
+    renderSidebar();
+    renderAlertFeed();
+    renderNotifBadge();
+    renderTopbar();
+  } else {
+    renderAll();
+  }
+}
+
+function saveState() {
+  // Silent save — no re-render at all, used for timer ticks etc
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
 }
 
 function resetState() {
@@ -1564,7 +1586,13 @@ function renderIPDDetail(id) {
 
 function setTab(id, tab) {
   S.activeTab[id] = tab;
-  save();
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  // Re-render just the patient detail, not the whole app
+  const p = S.patients.find(x => x.id === id);
+  if (p) {
+    if (p.status === 'OPD') renderOPDConsultation(id);
+    else renderIPDDetail(id);
+  }
 }
 
 // OVERVIEW TAB (IPD)
@@ -3825,7 +3853,7 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Auto vitals simulation
+// Auto vitals simulation — never wipes active forms
 setInterval(() => {
   S.patients.filter(p=>p.status==='Active').forEach(p => {
     const last = (S.vitals[p.id]||[])[0];
@@ -3845,7 +3873,14 @@ setInterval(() => {
     checkAlerts(p.id, newVital);
   });
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e){}
-  if (!document.getElementById('modal-container').innerHTML) renderAll();
+  // Only re-render if no modal open and not in a form or OPD consult
+  const modalOpen = !!document.getElementById('modal-container').innerHTML;
+  const activeView = S.activeNavItem[S.currentRole] || getDefaultView();
+  const inForm = ['admit','register'].includes(activeView) && !S.activePatientId;
+  const inOPDConsult = S.activePatientId &&
+    S.patients.find(p => p.id === S.activePatientId)?.status === 'OPD';
+  if (!modalOpen && !inForm && !inOPDConsult) renderAll();
+  else { renderAlertFeed(); renderNotifBadge(); }
 }, 45000);
 
 // Close notif on outside click
