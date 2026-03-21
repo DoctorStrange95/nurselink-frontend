@@ -1046,7 +1046,9 @@ function renderSidebar() {
 function setNav(view) {
   S.activeNavItem[S.currentRole] = view;
   S.activePatientId = null;
-  save();
+  // Save state silently, then forcefully render the new view
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  renderAll(); 
 }
 
 function renderMain() {
