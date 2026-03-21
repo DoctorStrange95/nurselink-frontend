@@ -746,9 +746,9 @@ const INIT = {
     { id:'B-8', ward:'B', status:'available' },
   ],
   patients: [
-    { id:'P1', name:'Ramesh Gupta', age:62, gender:'M', phone:'9876543210', ehrId:'EHR-20241', diagnosis:'Hypertension with Hypertensive Crisis', icd:'I10', bed:'A-4', doctorId:'S1', nurseId:'S3', admissionType:'Post-OPD', admitTime:'20/03/2026 08:00', status:'Active', chiefComplaint:'Headache, blurring of vision, chest discomfort', allergies:'Penicillin', bloodGroup:'B+' },
-    { id:'P2', name:'Lakshmi Devi', age:45, gender:'F', phone:'9876500001', ehrId:'EHR-20242', diagnosis:'Urinary Tract Infection with Urosepsis', icd:'N39.0', bed:'B-2', doctorId:'S2', nurseId:'S4', admissionType:'Direct IPD', admitTime:'20/03/2026 10:00', status:'Active', chiefComplaint:'Fever, burning micturition, rigors', allergies:'None Known', bloodGroup:'O+' },
-    { id:'P3', name:'Mohan Das', age:71, gender:'M', phone:'9876500002', ehrId:'EHR-20243', diagnosis:'COPD Exacerbation', icd:'J44.1', bed:'A-7', doctorId:'S1', nurseId:'S3', admissionType:'Direct IPD', admitTime:'20/03/2026 12:00', status:'Active', chiefComplaint:'Increasing breathlessness, wheeze, productive cough', allergies:'Aspirin', bloodGroup:'A+' },
+    { id:'P1', name:'Ramesh Gupta', age:62, gender:'M', phone:'9876543210', ehrId:'INST-2026-20241', diagnosis:'Hypertension with Hypertensive Crisis', icd:'I10', bed:'A-4', doctorId:'S1', nurseId:'S3', admissionType:'Post-OPD', admitTime:'20/03/2026 08:00', status:'Active', chiefComplaint:'Headache, blurring of vision, chest discomfort', allergies:'Penicillin', bloodGroup:'B+' },
+    { id:'P2', name:'Lakshmi Devi', age:45, gender:'F', phone:'9876500001', ehrId:'INST-2026-20242', diagnosis:'Urinary Tract Infection with Urosepsis', icd:'N39.0', bed:'B-2', doctorId:'S2', nurseId:'S4', admissionType:'Direct IPD', admitTime:'20/03/2026 10:00', status:'Active', chiefComplaint:'Fever, burning micturition, rigors', allergies:'None Known', bloodGroup:'O+' },
+    { id:'P3', name:'Mohan Das', age:71, gender:'M', phone:'9876500002', ehrId:'INST-2026-20243', diagnosis:'COPD Exacerbation', icd:'J44.1', bed:'A-7', doctorId:'S1', nurseId:'S3', admissionType:'Direct IPD', admitTime:'20/03/2026 12:00', status:'Active', chiefComplaint:'Increasing breathlessness, wheeze, productive cough', allergies:'Aspirin', bloodGroup:'A+' },
   ],
   vitals: {
     'P1': [
@@ -821,6 +821,8 @@ const INIT = {
   ],
   pharmStatus: {},
   dischargeReady: {},
+  bills: {},
+  opdQueue: [],
 };
 
 let S = JSON.parse(localStorage.getItem('NL_STATE_V3')) || JSON.parse(JSON.stringify(INIT));
@@ -921,12 +923,18 @@ function renderAll() {
 }
 
 function renderTopbar() {
-  const roles = ['Doctor','Nurse','Pharmacist','Lab Tech','Admin'];
-  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)' };
+  const roles = ['Doctor','Nurse','Pharmacist','Lab Tech','Admin','Billing','Counter'];
+  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)' };
   document.documentElement.style.setProperty('--role-color', roleColors[S.currentRole] || 'var(--teal)');
-  document.getElementById('role-switcher').innerHTML = roles.map(r =>
-    `<button class="${S.currentRole===r?'active':''}" onclick="switchRole('${r}')">${r}</button>`
-  ).join('');
+  if (IS_LIVE) {
+    const color = roleColors[S.currentRole] || 'var(--teal)';
+    document.getElementById('role-switcher').innerHTML =
+      `<span style="padding:5px 14px;border-radius:20px;background:${color};color:white;font-size:12px;font-weight:700">${S.currentRole}</span>`;
+  } else {
+    document.getElementById('role-switcher').innerHTML = roles.map(r =>
+      `<button class="${S.currentRole===r?'active':''}" onclick="switchRole('${r}')">${r}</button>`
+    ).join('');
+  }
 }
 
 function switchRole(role) {
@@ -944,6 +952,8 @@ function renderSidebar() {
       { icon:'🔬', label:'Lab Orders', view:'labs' },
       { icon:'⚡', label:'Alerts', view:'alerts' },
       { icon:'📄', label:'Discharge', view:'discharge' },
+      { icon:'📈', label:'Analytics', view:'analytics' },
+      { icon:'🔢', label:'OPD Queue', view:'queue' },
     ],
     Nurse: [
       { icon:'🏥', label:'My Patients', view:'patients' },
@@ -966,11 +976,20 @@ function renderSidebar() {
       { icon:'🔗', label:'Integration', view:'integration' },
       { icon:'📋', label:'Audit Log', view:'audit' },
       { icon:'📊', label:'Workload', view:'workload' },
+      { icon:'📈', label:'Analytics', view:'analytics' },
+    ],
+    Billing: [
+      { icon:'💰', label:'Billing', view:'billing' },
+      { icon:'📋', label:'Bills List', view:'billslist' },
+    ],
+    Counter: [
+      { icon:'🏥', label:'Register Patient', view:'register' },
+      { icon:'🔢', label:'OPD Queue', view:'queue' },
     ],
   };
   const items = navItems[S.currentRole] || [];
   const staffName = getCurrentStaffName();
-  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)' };
+  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)' };
   const activeNav = S.activeNavItem[S.currentRole] || items[0]?.view;
 
   document.getElementById('sidebar').innerHTML = `
@@ -1016,14 +1035,18 @@ function renderMain() {
     beds: renderBedsPage,
     integration: renderIntegrationPage,
     audit: renderAuditPage,
-    workload: renderWorkloadPage,
+    analytics: renderAnalyticsPage,
+    billing: renderBillingPage,
+    billslist: renderBillsListPage,
+    register: renderRegisterPage,
+    queue: renderQueuePage,
   };
   if (view === 'patientDetail') { renders.patientDetail(); return; }
   (renders[view] || renders.patients)();
 }
 
 function getDefaultView() {
-  const defaults = { Doctor:'patients', Nurse:'patients', Pharmacist:'pharmacy', 'Lab Tech':'labtech', Admin:'staff' };
+  const defaults = { Doctor:'patients', Nurse:'patients', Pharmacist:'pharmacy', 'Lab Tech':'labtech', Admin:'analytics', Billing:'billing', Counter:'queue' };
   return defaults[S.currentRole] || 'patients';
 }
 
@@ -2630,7 +2653,7 @@ function submitLabResult(pid, labId, patientName) {
 // ADMIN PAGES
 function renderStaffPage() {
   const main = document.getElementById('main');
-  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)' };
+  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)' };
   main.innerHTML = `
     <div class="flex items-center justify-between mb-4">
       <div><div class="section-title">Staff Management</div><div class="section-sub">${S.staff.length} staff members</div></div>
@@ -2894,6 +2917,513 @@ function renderAllLabs() {
       </div>`;
     }).join('')}
   `;
+}
+
+// ============================================================
+// ANALYTICS PAGE
+// ============================================================
+function renderAnalyticsPage() {
+  const main = document.getElementById('main');
+  const active = S.patients.filter(p=>p.status==='Active').length;
+  const opd = S.patients.filter(p=>p.status==='OPD').length;
+  const discharged = S.patients.filter(p=>p.status==='Discharged').length;
+  const totalBeds = S.beds.length;
+  const occupiedBeds = S.beds.filter(b=>b.status==='occupied').length;
+  const occupancyPct = Math.round((occupiedBeds/totalBeds)*100);
+  const unackedAlerts = S.alerts.filter(a=>!a.acked).length;
+  // Doctor workload
+  const doctors = S.staff.filter(s=>s.role==='Doctor');
+  const nurses = S.staff.filter(s=>s.role==='Nurse');
+  main.innerHTML = `
+    <div class="section-title">Analytics Dashboard</div>
+    <div class="section-sub">Institution-wide overview — real time</div>
+
+    <div class="grid-3 mb-4">
+      <div class="card">
+        <div class="card-body" style="text-align:center">
+          <div style="font-size:36px;font-weight:800;color:var(--teal)">${active}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Active IPD Patients</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body" style="text-align:center">
+          <div style="font-size:36px;font-weight:800;color:var(--indigo)">${opd}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">OPD Consultations Today</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body" style="text-align:center">
+          <div style="font-size:36px;font-weight:800;color:var(--emerald)">${discharged}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Discharged</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2 mb-4">
+      <div class="card">
+        <div class="card-header"><h3>🛏 Bed Occupancy</h3></div>
+        <div class="card-body">
+          <div style="font-size:32px;font-weight:800;color:${occupancyPct>85?'var(--red)':occupancyPct>60?'var(--amber)':'var(--emerald)'}">${occupancyPct}%</div>
+          <div class="text-muted mb-3">${occupiedBeds} of ${totalBeds} beds occupied</div>
+          <div class="workload-bar" style="height:12px">
+            <div class="workload-fill ${occupancyPct>85?'high':occupancyPct>60?'med':''}" style="width:${occupancyPct}%"></div>
+          </div>
+          <div class="mt-4">
+            <div class="section-title" style="font-size:14px;margin-bottom:8px">Bed Grid</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:8px">
+              ${S.beds.map(b=>`
+                <div onclick="openBedPatient('${b.id}')" style="background:${b.status==='available'?'#E8F5E9':b.status==='occupied'?'#FFEBEE':'#FFF3E0'};border:1.5px solid ${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'};border-radius:8px;padding:8px;text-align:center;cursor:${b.status==='occupied'?'pointer':'default'};font-size:11px;font-weight:700;color:${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'}">
+                  ${b.id}<br><span style="font-weight:400;font-size:10px">${b.status==='available'?'Free':b.status==='occupied'?'Occ.':'Res.'}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>⚡ Unacknowledged Alerts</h3></div>
+        <div class="card-body">
+          <div style="font-size:32px;font-weight:800;color:${unackedAlerts>0?'var(--red)':'var(--emerald)'}">${unackedAlerts}</div>
+          <div class="text-muted mb-3">pending acknowledgement</div>
+          <div class="card-header" style="margin:0 -16px"><h3>👥 Staff On Duty</h3></div>
+          <div class="mt-3">
+            ${doctors.map(d=>{
+              const pts = S.patients.filter(p=>p.doctorId===d.id&&p.status==='Active').length;
+              return `<div class="flex items-center justify-between mb-2">
+                <div><div style="font-size:13px;font-weight:600">${d.name}</div><div class="text-muted">${d.dept}</div></div>
+                <span class="badge ${pts>3?'badge-red':pts>1?'badge-amber':'badge-teal'}">${pts} pts</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>🏥 Active IPD Patients</h3></div>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>UHID</th><th>Patient</th><th>Bed</th><th>Doctor</th><th>Diagnosis</th><th>LOS</th><th>Alerts</th></tr></thead>
+          <tbody>
+            ${S.patients.filter(p=>p.status==='Active').map(p=>{
+              const doc = S.staff.find(s=>s.id===p.doctorId);
+              const alerts = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
+              const admitDate = new Date(p.admitTime?.split(' ').reverse().join('-') || Date.now());
+              const los = Math.max(0,Math.round((Date.now()-admitDate.getTime())/(1000*60*60*24)));
+              return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer">
+                <td class="mono">${p.ehrId||'—'}</td>
+                <td class="fw-600">${p.name}</td>
+                <td>${p.bed||'—'}</td>
+                <td>${doc?.name||'—'}</td>
+                <td style="font-size:11px">${p.diagnosis}</td>
+                <td>${los}d</td>
+                <td>${alerts>0?`<span class="badge badge-red">${alerts}</span>`:'—'}</td>
+              </tr>`;
+            }).join('')||'<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px">No active IPD patients</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openBedPatient(bedId) {
+  const p = S.patients.find(x=>x.bed===bedId&&x.status==='Active');
+  if (p) openPatient(p.id);
+}
+
+// ============================================================
+// BILLING PAGE
+// ============================================================
+function renderBillingPage() {
+  const main = document.getElementById('main');
+  const discharged = S.patients.filter(p=>p.status==='Discharged'||p.status==='Active');
+  main.innerHTML = `
+    <div class="section-title">Billing</div>
+    <div class="section-sub">Generate itemised bills for admitted patients</div>
+    <div class="card mb-4">
+      <div class="card-header"><h3>Select Patient</h3></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Patient (UHID / Name)</label>
+          <select class="form-control" id="bill-patient" onchange="loadBillPatient(this.value)">
+            <option value="">— Select patient —</option>
+            ${discharged.map(p=>`<option value="${p.id}">${p.ehrId||p.id} — ${p.name} (${p.status})</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div id="bill-form" style="display:none">
+      <div class="card mb-4">
+        <div class="card-header"><h3>Itemised Charges</h3></div>
+        <div class="card-body">
+          <table class="data-table" id="bill-items-table">
+            <thead><tr><th>Category</th><th>Particulars</th><th>Rate (₹)</th><th>Qty</th><th>Amount (₹)</th><th></th></tr></thead>
+            <tbody id="bill-items-body"></tbody>
+          </table>
+          <button class="btn btn-outline btn-sm mt-3" onclick="addBillItem()">+ Add Line Item</button>
+        </div>
+      </div>
+      <div class="card mb-4">
+        <div class="card-header"><h3>Bill Summary</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Gross Amount (₹)</label><input class="form-control" id="bill-gross" readonly></div>
+            <div class="form-group"><label class="form-label">Discount (₹)</label><input class="form-control" id="bill-discount" type="number" value="0" oninput="recalcBill()"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Advance Paid (₹)</label><input class="form-control" id="bill-advance" type="number" value="0" oninput="recalcBill()"></div>
+            <div class="form-group"><label class="form-label">Insurance Deduction (₹)</label><input class="form-control" id="bill-insurance" type="number" value="0" oninput="recalcBill()"></div>
+          </div>
+          <div style="background:var(--panel);border-radius:8px;padding:16px;margin-top:8px">
+            <div class="flex items-center justify-between mb-2"><span class="fw-600">Net Payable</span><span id="bill-net" style="font-size:22px;font-weight:800;color:var(--teal)">₹0</span></div>
+          </div>
+          <div class="form-group mt-3"><label class="form-label">Insurance Company / TPA</label><input class="form-control" id="bill-ins-name" placeholder="e.g. Star Health, Medi Assist"></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Policy Number</label><input class="form-control" id="bill-policy"></div>
+            <div class="form-group"><label class="form-label">Claim Number</label><input class="form-control" id="bill-claim"></div>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button class="btn btn-primary" onclick="generateBill(false)">💾 Save Draft Bill</button>
+        <button class="btn btn-danger" onclick="generateBill(true)">🔒 Lock & Generate Final Bill</button>
+      </div>
+    </div>
+  `;
+  // Init bill items
+  window._billItems = [];
+}
+
+function loadBillPatient(pid) {
+  if (!pid) { document.getElementById('bill-form').style.display='none'; return; }
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
+  document.getElementById('bill-form').style.display='block';
+  // Auto-add bed charges
+  window._billItems = [];
+  if (p.bed && p.admitTime) {
+    const admitDate = new Date(p.admitTime?.split(' ').reverse().join('-') || Date.now());
+    const los = Math.max(1, Math.round((Date.now()-admitDate.getTime())/(1000*60*60*24)));
+    window._billItems.push({ category:'Bed Charges', particulars:`Bed ${p.bed} × ${los} day(s)`, rate:2000, qty:los });
+  }
+  // Auto-add prescriptions as pharmacy
+  (S.prescriptions[pid]||[]).filter(r=>r.status==='active').forEach(rx=>{
+    window._billItems.push({ category:'Pharmacy', particulars:rx.drug+' '+rx.dose, rate:0, qty:1 });
+  });
+  renderBillItems();
+}
+
+function renderBillItems() {
+  const tbody = document.getElementById('bill-items-body');
+  if (!tbody) return;
+  tbody.innerHTML = window._billItems.map((item,i)=>`
+    <tr>
+      <td><select class="form-control" style="font-size:12px;padding:4px" onchange="window._billItems[${i}].category=this.value;recalcBill()">
+        ${['Bed Charges','Doctor Charges','Pathology','Radiology','Pharmacy','Medical Consumables','O2 Charges','Miscellaneous'].map(c=>`<option ${item.category===c?'selected':''}>${c}</option>`).join('')}
+      </select></td>
+      <td><input class="form-control" style="font-size:12px;padding:4px" value="${item.particulars}" oninput="window._billItems[${i}].particulars=this.value"></td>
+      <td><input class="form-control" style="font-size:12px;padding:4px;width:80px" type="number" value="${item.rate}" oninput="window._billItems[${i}].rate=+this.value;recalcBill()"></td>
+      <td><input class="form-control" style="font-size:12px;padding:4px;width:60px" type="number" value="${item.qty}" oninput="window._billItems[${i}].qty=+this.value;recalcBill()"></td>
+      <td class="mono">₹${((item.rate||0)*(item.qty||1)).toLocaleString('en-IN')}</td>
+      <td><button onclick="window._billItems.splice(${i},1);renderBillItems()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px">×</button></td>
+    </tr>
+  `).join('');
+  recalcBill();
+}
+
+function addBillItem() {
+  window._billItems.push({ category:'Miscellaneous', particulars:'', rate:0, qty:1 });
+  renderBillItems();
+}
+
+function recalcBill() {
+  const gross = (window._billItems||[]).reduce((s,i)=>s+(i.rate||0)*(i.qty||1),0);
+  const discount = parseFloat(document.getElementById('bill-discount')?.value)||0;
+  const advance = parseFloat(document.getElementById('bill-advance')?.value)||0;
+  const insurance = parseFloat(document.getElementById('bill-insurance')?.value)||0;
+  const net = Math.max(0, gross - discount - advance - insurance);
+  if(document.getElementById('bill-gross')) document.getElementById('bill-gross').value = '₹'+gross.toLocaleString('en-IN');
+  if(document.getElementById('bill-net')) document.getElementById('bill-net').textContent = '₹'+net.toLocaleString('en-IN');
+}
+
+function generateBill(lock) {
+  const pid = document.getElementById('bill-patient')?.value;
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
+  if (lock && !confirm('Lock this bill? This cannot be undone.')) return;
+  if (!S.bills) S.bills = {};
+  const gross = (window._billItems||[]).reduce((s,i)=>s+(i.rate||0)*(i.qty||1),0);
+  const discount = parseFloat(document.getElementById('bill-discount')?.value)||0;
+  const advance = parseFloat(document.getElementById('bill-advance')?.value)||0;
+  const insurance = parseFloat(document.getElementById('bill-insurance')?.value)||0;
+  const net = Math.max(0, gross - discount - advance - insurance);
+  S.bills[pid] = {
+    pid, patientName:p.name, ehrId:p.ehrId, items:[...window._billItems],
+    gross, discount, advance, insurance, net,
+    insName:document.getElementById('bill-ins-name')?.value,
+    policy:document.getElementById('bill-policy')?.value,
+    claim:document.getElementById('bill-claim')?.value,
+    locked:lock, generatedAt:now(), generatedBy:getCurrentStaffName()
+  };
+  showToast(lock ? `Bill locked ✓ — Net payable ₹${net.toLocaleString('en-IN')}` : 'Draft bill saved');
+  save();
+}
+
+function renderBillsListPage() {
+  const main = document.getElementById('main');
+  const bills = Object.values(S.bills||{});
+  main.innerHTML = `
+    <div class="section-title">Bills</div>
+    <div class="section-sub">${bills.length} bill(s) generated</div>
+    <div class="card">
+      <table class="data-table">
+        <thead><tr><th>UHID</th><th>Patient</th><th>Generated</th><th>Net (₹)</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${bills.length===0?'<tr><td colspan="6" class="text-muted" style="text-align:center;padding:20px">No bills yet</td></tr>':
+          bills.map(b=>`<tr>
+            <td class="mono">${b.ehrId||'—'}</td>
+            <td class="fw-600">${b.patientName}</td>
+            <td class="mono">${b.generatedAt}</td>
+            <td class="mono fw-600">₹${b.net?.toLocaleString('en-IN')}</td>
+            <td><span class="badge ${b.locked?'badge-red':'badge-amber'}">${b.locked?'LOCKED':'DRAFT'}</span></td>
+            <td><button class="btn btn-outline btn-sm" onclick="viewBillSummary('${b.pid}')">View</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function viewBillSummary(pid) {
+  const b = S.bills?.[pid];
+  if (!b) return;
+  showModal(`<div class="modal" style="max-width:650px">
+    <div class="modal-header"><h2>🧾 Bill — ${b.patientName}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="flex items-center justify-between mb-3">
+        <div><span class="badge ${b.locked?'badge-red':'badge-amber'}">${b.locked?'FINAL — LOCKED':'DRAFT'}</span></div>
+        <div class="mono text-muted">${b.ehrId} | ${b.generatedAt}</div>
+      </div>
+      <table class="data-table mb-3">
+        <thead><tr><th>Category</th><th>Particulars</th><th>Rate</th><th>Qty</th><th>Amount</th></tr></thead>
+        <tbody>${(b.items||[]).map(i=>`<tr><td>${i.category}</td><td>${i.particulars}</td><td>₹${i.rate}</td><td>${i.qty}</td><td class="fw-600">₹${((i.rate||0)*(i.qty||1)).toLocaleString('en-IN')}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="background:var(--panel);border-radius:8px;padding:16px">
+        <div class="flex items-center justify-between mb-1"><span>Gross</span><span class="mono">₹${b.gross?.toLocaleString('en-IN')}</span></div>
+        <div class="flex items-center justify-between mb-1"><span>Discount</span><span class="mono">−₹${b.discount?.toLocaleString('en-IN')}</span></div>
+        <div class="flex items-center justify-between mb-1"><span>Advance</span><span class="mono">−₹${b.advance?.toLocaleString('en-IN')}</span></div>
+        <div class="flex items-center justify-between mb-1"><span>Insurance</span><span class="mono">−₹${b.insurance?.toLocaleString('en-IN')}</span></div>
+        <div class="flex items-center justify-between" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px"><span class="fw-600">Net Payable</span><span class="mono fw-600" style="font-size:18px;color:var(--teal)">₹${b.net?.toLocaleString('en-IN')}</span></div>
+      </div>
+      ${b.insName?`<div class="mt-3 text-muted text-sm">Insurance: ${b.insName} | Policy: ${b.policy||'—'} | Claim: ${b.claim||'—'}</div>`:''}
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+  </div>`);
+}
+
+// ============================================================
+// PATIENT REGISTRATION (Counter Staff)
+// ============================================================
+function generateUHID() {
+  const yr = new Date().getFullYear();
+  const num = String(Math.floor(10000+Math.random()*90000));
+  return `INST-${yr}-${num}`;
+}
+
+function renderRegisterPage() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="section-title">Register New Patient</div>
+    <div class="section-sub">UHID is auto-generated on save</div>
+    <div class="card">
+      <div class="card-header"><h3>Patient Demographics</h3></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">First Name *</label><input class="form-control" id="reg-fname" placeholder="First name"></div>
+          <div class="form-group"><label class="form-label">Last Name *</label><input class="form-control" id="reg-lname" placeholder="Last name"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Age *</label><input class="form-control" id="reg-age" type="number" placeholder="Age"></div>
+          <div class="form-group"><label class="form-label">Gender *</label><select class="form-control" id="reg-gender"><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Phone Number</label><input class="form-control" id="reg-phone" placeholder="10-digit mobile" oninput="checkExistingPatient(this.value)"></div>
+          <div class="form-group"><label class="form-label">Blood Group</label><select class="form-control" id="reg-bg"><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select></div>
+        </div>
+        <div id="existing-patient-alert" style="display:none" class="alert-item warning mb-3"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Height (cm)</label><input class="form-control" id="reg-height" type="number" placeholder="165" oninput="calcBMI()"></div>
+          <div class="form-group"><label class="form-label">Weight (kg)</label><input class="form-control" id="reg-weight" type="number" placeholder="70" oninput="calcBMI()"></div>
+        </div>
+        <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="reg-bmi" readonly placeholder="Enter height & weight"></div>
+        <div class="form-group"><label class="form-label">Chief Complaint</label><textarea class="form-control" id="reg-cc" rows="2" placeholder="Presenting complaint..."></textarea></div>
+      </div>
+    </div>
+    <div class="card mt-4">
+      <div class="card-header"><h3>Vitals (optional)</h3></div>
+      <div class="card-body">
+        <div class="form-row-3">
+          <div class="form-group"><label class="form-label">BP (Sys/Dia)</label><div class="flex gap-2"><input class="form-control" id="reg-bps" type="number" placeholder="120"><input class="form-control" id="reg-bpd" type="number" placeholder="80"></div></div>
+          <div class="form-group"><label class="form-label">Pulse (bpm)</label><input class="form-control" id="reg-pulse" type="number" placeholder="72"></div>
+          <div class="form-group"><label class="form-label">SpO2 (%)</label><input class="form-control" id="reg-spo2" type="number" placeholder="98"></div>
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-4">
+      <button class="btn btn-primary" onclick="saveRegistration()">✔ Register & Generate UHID</button>
+      <button class="btn btn-outline" onclick="setNav('queue')">Cancel</button>
+    </div>
+  `;
+}
+
+function calcBMI() {
+  const h = parseFloat(document.getElementById('reg-height')?.value);
+  const w = parseFloat(document.getElementById('reg-weight')?.value);
+  if (h && w) {
+    const bmi = (w / Math.pow(h/100, 2)).toFixed(1);
+    document.getElementById('reg-bmi').value = bmi;
+  }
+}
+
+function checkExistingPatient(phone) {
+  if (phone.length < 10) { document.getElementById('existing-patient-alert').style.display='none'; return; }
+  const existing = S.patients.find(p=>p.phone===phone);
+  const el = document.getElementById('existing-patient-alert');
+  if (existing) {
+    el.style.display = 'block';
+    el.innerHTML = `<div class="al-title">⚠ Existing patient found</div><div class="al-meta">${existing.name}, ${existing.age} yrs — UHID: ${existing.ehrId}. <a href="#" onclick="openPatient('${existing.id}');closeModal()" style="color:var(--teal)">Open record</a> or continue to create new.</div>`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function saveRegistration() {
+  const fname = document.getElementById('reg-fname').value.trim();
+  const lname = document.getElementById('reg-lname').value.trim();
+  const age = document.getElementById('reg-age').value;
+  if (!fname || !lname || !age) { alert('First name, last name and age are required.'); return; }
+  const uhid = generateUHID();
+  const pid = 'P'+Date.now();
+  const patient = {
+    id:pid, name:`${fname} ${lname}`, age:parseInt(age),
+    gender:document.getElementById('reg-gender').value,
+    phone:document.getElementById('reg-phone').value.trim(),
+    ehrId:uhid, diagnosis:'', icd:'', bed:'',
+    doctorId:'', nurseId:'',
+    admissionType:'OPD', admitTime:now(), status:'OPD',
+    chiefComplaint:document.getElementById('reg-cc').value.trim(),
+    allergies:'None Known', bloodGroup:document.getElementById('reg-bg').value,
+    height:document.getElementById('reg-height').value,
+    weight:document.getElementById('reg-weight').value,
+    bmi:document.getElementById('reg-bmi').value,
+  };
+  S.patients.unshift(patient);
+  S.vitals[pid] = [];
+  S.prescriptions[pid] = [];
+  S.labOrders[pid] = [];
+  S.consultNotes[pid] = [];
+  S.nursingNotes[pid] = [];
+  S.chat[pid] = [];
+  // Add initial vitals if entered
+  const bps = parseInt(document.getElementById('reg-bps').value);
+  const bpd = parseInt(document.getElementById('reg-bpd').value);
+  const pulse = parseInt(document.getElementById('reg-pulse').value);
+  const spo2 = parseInt(document.getElementById('reg-spo2').value);
+  if (bps && bpd && pulse) {
+    S.vitals[pid].push({ id:'V'+Date.now(), time:ts(), bpSys:bps, bpDia:bpd, pulse, spo2:spo2||98, temp:37.0, rr:18, gcs:15, uo:40, glucose:100, drain:0, pain:0, notes:'Registration vitals', nurse:getCurrentStaffName() });
+  }
+  // Add to OPD queue
+  if (!S.opdQueue) S.opdQueue = [];
+  S.opdQueue.unshift({ pid, name:patient.name, uhid, cc:patient.chiefComplaint, time:ts(), status:'Waiting' });
+  showToast(`UHID generated: ${uhid}`);
+  showModal(`<div class="modal"><div class="modal-header"><h2>✅ Patient Registered</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:800;color:var(--teal);letter-spacing:2px">${uhid}</div>
+      <div class="text-muted mt-2">Share this UHID with the patient</div>
+      <div style="margin-top:16px;font-size:14px"><b>${patient.name}</b> | ${patient.age} yrs | ${patient.gender==='M'?'Male':patient.gender==='F'?'Female':'Other'}</div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal();setNav('queue')">Go to Queue</button></div>
+  </div>`);
+  save();
+}
+
+// ============================================================
+// OPD QUEUE (Counter / Doctor)
+// ============================================================
+function renderQueuePage() {
+  const main = document.getElementById('main');
+  if (!S.opdQueue) S.opdQueue = [];
+  const waiting = S.opdQueue.filter(q=>q.status==='Waiting');
+  const called = S.opdQueue.filter(q=>q.status==='Called');
+  const done = S.opdQueue.filter(q=>q.status==='Done');
+  main.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="section-title">OPD Queue</div>
+        <div class="section-sub">${waiting.length} waiting · ${called.length} with doctor · ${done.length} done today</div>
+      </div>
+      <button class="btn btn-primary" onclick="setNav('register')">➕ Register Patient</button>
+    </div>
+    <div class="grid-3">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⏳ Waiting (${waiting.length})</div>
+        ${waiting.map((q,i)=>`
+          <div class="card mb-3" style="border-left:3px solid var(--amber)">
+            <div class="card-body">
+              <div class="flex items-center justify-between mb-1">
+                <span style="font-size:18px;font-weight:800;color:var(--amber)">#${i+1}</span>
+                <span class="mono text-muted" style="font-size:11px">${q.time}</span>
+              </div>
+              <div class="fw-600">${q.name}</div>
+              <div class="mono text-muted" style="font-size:11px">${q.uhid}</div>
+              <div class="text-muted mt-1" style="font-size:12px">${q.cc||'No complaint noted'}</div>
+              <div class="flex gap-2 mt-2">
+                <button class="btn btn-primary btn-sm" onclick="callPatient('${q.pid}')">📣 Call</button>
+                <button class="btn btn-outline btn-sm" onclick="openPatient('${q.pid}')">View →</button>
+              </div>
+            </div>
+          </div>
+        `).join('')||'<div class="text-muted" style="font-size:13px">Queue is empty</div>'}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🩺 With Doctor (${called.length})</div>
+        ${called.map(q=>`
+          <div class="card mb-3" style="border-left:3px solid var(--teal)">
+            <div class="card-body">
+              <div class="fw-600">${q.name}</div>
+              <div class="mono text-muted" style="font-size:11px">${q.uhid}</div>
+              <button class="btn btn-success btn-sm mt-2" onclick="markQueueDone('${q.pid}')">✔ Done</button>
+            </div>
+          </div>
+        `).join('')||'<div class="text-muted" style="font-size:13px">No active consultations</div>'}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--emerald);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✅ Done Today (${done.length})</div>
+        ${done.slice(0,5).map(q=>`
+          <div class="card mb-2" style="border-left:3px solid var(--emerald);opacity:0.7">
+            <div class="card-body" style="padding:10px 12px">
+              <div class="fw-600" style="font-size:13px">${q.name}</div>
+              <div class="mono text-muted" style="font-size:11px">${q.uhid}</div>
+            </div>
+          </div>
+        `).join('')||'<div class="text-muted" style="font-size:13px">None yet</div>'}
+      </div>
+    </div>
+  `;
+}
+
+function callPatient(pid) {
+  if (!S.opdQueue) return;
+  const q = S.opdQueue.find(x=>x.pid===pid);
+  if (q) { q.status='Called'; save(); }
+}
+
+function markQueueDone(pid) {
+  if (!S.opdQueue) return;
+  const q = S.opdQueue.find(x=>x.pid===pid);
+  if (q) { q.status='Done'; save(); }
 }
 
 // ============================================================
