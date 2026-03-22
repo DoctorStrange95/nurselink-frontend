@@ -1373,7 +1373,7 @@ function renderPatientCard(p) {
         ` : isOPD ? `<div class="text-muted mt-2" style="font-size:11px">${p.chiefComplaint||'No complaint noted'}</div>` : !isDisc ? '<div class="text-muted mt-2" style="font-size:11px">No vitals recorded yet</div>' : ''}
         <div class="flex gap-2 mt-2" style="margin-top:10px">
           ${isDisc
-            ? `<button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 View History</button>
+            ? `<button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();showPatientHistoryPDF('${p.id}')">📋 View History</button>
                <button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖 AI Summary</button>`
             : isOPD
             ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>
@@ -2635,6 +2635,259 @@ async function sendChat(pid) {
   if (input) input.value = '';
   if (IS_LIVE) await apiPost('/chat/' + pid, { message: msg });
   save();
+}
+
+// ============================================================
+// PATIENT HISTORY PDF VIEW
+// ============================================================
+function showPatientHistoryPDF(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
+  const doc = S.staff.find(s=>s.id===p.doctorId);
+  const nurse = S.staff.find(s=>s.id===p.nurseId);
+  const rxList = S.prescriptions[pid] || [];
+  const labs = S.labOrders[pid] || [];
+  const vitals = S.vitals[pid] || [];
+  const consults = S.consultNotes[pid] || [];
+  const nursingNotes = S.nursingNotes[pid] || [];
+  const los = calcLOS(p.admitTime);
+
+  // Find all visits by same phone
+  const allVisits = p.phone
+    ? S.patients.filter(x => x.phone === p.phone && x.id !== pid)
+    : [];
+
+  const sectionStyle = 'border:1px solid #CBD5E1;border-radius:8px;margin-bottom:16px;overflow:hidden';
+  const headStyle = 'background:#F0F4F8;padding:10px 14px;font-weight:700;font-size:13px;color:#0A1628;border-bottom:1px solid #CBD5E1';
+  const bodyStyle = 'padding:14px;font-size:13px;line-height:1.7';
+
+  showModal(`<div class="modal" style="max-width:780px">
+    <div class="modal-header" style="position:sticky;top:0;z-index:10;background:white">
+      <div>
+        <h2 style="font-size:15px">📋 Clinical Record — ${p.name}</h2>
+        <div style="font-size:11px;color:var(--text-muted)">${p.ehrId} · ${p.status === 'Discharged' ? 'Discharged' : p.status}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" onclick="printHistoryPDF('${pid}')">🖨 Print</button>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" id="history-pdf-body" style="padding:20px;background:#FAFAFA">
+
+      <!-- HEADER STRIP -->
+      <div style="background:var(--navy);color:white;border-radius:10px;padding:16px 20px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:18px;font-weight:800">${p.name}</div>
+          <div style="font-size:12px;opacity:.7;margin-top:2px">${p.age} yrs · ${p.gender==='M'?'Male':'Female'} · ${p.bloodGroup||'—'}</div>
+          <div style="font-size:11px;opacity:.5;margin-top:2px">📞 ${p.phone||'—'}</div>
+        </div>
+        <div style="border-left:1px solid rgba(255,255,255,.15);padding-left:16px">
+          <div style="font-size:10px;opacity:.5;text-transform:uppercase;letter-spacing:.5px">EHR ID</div>
+          <div style="font-family:monospace;font-size:13px;font-weight:700">${p.ehrId}</div>
+          <div style="font-size:10px;opacity:.5;margin-top:8px;text-transform:uppercase">Allergies</div>
+          <div style="font-size:12px;color:${p.allergies&&p.allergies!=='None Known'?'#FF8A8A':'rgba(255,255,255,.7)'};font-weight:${p.allergies&&p.allergies!=='None Known'?'700':'400'}">${p.allergies||'None Known'}</div>
+        </div>
+        <div style="border-left:1px solid rgba(255,255,255,.15);padding-left:16px">
+          <div style="font-size:10px;opacity:.5;text-transform:uppercase">Admitted</div>
+          <div style="font-size:12px">${p.admitTime||'—'}</div>
+          <div style="font-size:10px;opacity:.5;margin-top:6px;text-transform:uppercase">Discharged</div>
+          <div style="font-size:12px">${p.dischargeTime||'—'}</div>
+          <div style="font-size:10px;opacity:.5;margin-top:6px;text-transform:uppercase">Condition</div>
+          <div style="font-size:12px;font-weight:700;color:#69F0AE">${p.dischargeCondition||'Stable'}</div>
+        </div>
+      </div>
+
+      <!-- DIAGNOSIS -->
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">🩺 Diagnosis & Clinical Summary</div>
+        <div style="${bodyStyle}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Primary Diagnosis</div>
+              <div style="font-size:15px;font-weight:700;margin-top:3px">${p.diagnosis||'—'}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">ICD-10: ${p.icd||'—'}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Chief Complaint</div>
+              <div style="margin-top:3px">${p.chiefComplaint||'—'}</div>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Attending Doctor</div>
+              <div style="margin-top:3px">${doc?.name||'—'} · ${doc?.dept||''}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700">Assigned Nurse</div>
+              <div style="margin-top:3px">${nurse?.name||'—'}</div>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${[['Admission Type',p.admissionType||'—'],['LOS',los+'d'],['Bed',p.bed||'OPD']].map(([l,v])=>`
+              <div style="background:var(--panel);border-radius:6px;padding:8px 12px">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${l}</div>
+                <div style="font-weight:600;margin-top:2px">${v}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- VITALS SUMMARY -->
+      ${vitals.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">📊 Vitals Summary (${vitals.length} readings)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#F0F4F8">
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">Time</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">BP</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">Pulse</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">SpO₂</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">Temp</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">GCS</th>
+              <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--text-muted);font-size:10px;text-transform:uppercase">By</th>
+            </tr></thead>
+            <tbody>
+              ${vitals.map((v,i)=>`<tr style="border-top:1px solid #CBD5E1;background:${i%2===0?'white':'#FAFAFA'}">
+                <td style="padding:7px 10px;font-family:monospace;font-size:11px">${v.time}</td>
+                <td style="padding:7px 10px;font-weight:600;color:${v.bpSys>180?'var(--red)':v.bpSys>160?'var(--warn)':'inherit'}">${v.bpSys}/${v.bpDia}</td>
+                <td style="padding:7px 10px">${v.pulse}</td>
+                <td style="padding:7px 10px;color:${v.spo2<92?'var(--red)':v.spo2<95?'var(--warn)':'inherit'}">${v.spo2}%</td>
+                <td style="padding:7px 10px">${v.temp}°C</td>
+                <td style="padding:7px 10px">${v.gcs}/15</td>
+                <td style="padding:7px 10px;font-size:11px;color:var(--text-muted)">${v.nurse||'—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ''}
+
+      <!-- PRESCRIPTIONS -->
+      ${rxList.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">💊 Medications (${rxList.length} total)</div>
+        <div style="${bodyStyle};padding-top:8px;padding-bottom:8px">
+          ${rxList.map(r=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #F0F4F8">
+              <div style="flex:1">
+                <span style="font-weight:700">${r.drug}</span>
+                <span style="font-family:monospace;font-size:11px;color:var(--text-muted);margin-left:8px">${r.dose} · ${r.route} · ${r.freq} · ${r.duration}</span>
+                ${r.instructions?`<span style="font-size:11px;color:var(--amber);margin-left:6px">⚠ ${r.instructions}</span>`:''}
+              </div>
+              <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700;background:${r.status==='active'?'#E8F5E9':r.status==='discontinued'?'#FFEBEE':'#E3F2FD'};color:${r.status==='active'?'var(--emerald)':r.status==='discontinued'?'var(--red)':'var(--indigo)'}">${r.status.toUpperCase()}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- LAB RESULTS -->
+      ${labs.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">🔬 Investigations & Results</div>
+        <div style="${bodyStyle};padding-top:8px;padding-bottom:8px">
+          ${labs.map(l=>`
+            <div style="padding:8px 0;border-bottom:1px solid #F0F4F8">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div>
+                  <span style="font-weight:700">${l.test}</span>
+                  <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${l.category||''}</span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span style="font-size:11px;padding:1px 7px;border-radius:8px;font-weight:700;background:${l.priority==='STAT'?'#FFEBEE':l.priority==='Urgent'?'#FFF3E0':'#F0F4F8'};color:${l.priority==='STAT'?'var(--red)':l.priority==='Urgent'?'var(--amber)':'var(--text-muted)'}">${l.priority}</span>
+                  <span style="font-size:11px;font-weight:700;color:${l.status==='Result Available'?'var(--emerald)':'var(--text-muted)'}">${l.status}</span>
+                </div>
+              </div>
+              ${l.result?`<div style="margin-top:5px;padding:6px 10px;background:var(--panel);border-radius:5px;font-family:monospace;font-size:12px;color:${l.resultStatus==='Critical'?'var(--red)':l.resultStatus==='Abnormal'?'var(--warn)':'var(--emerald)'}">${l.result}</div>`:''}
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- CONSULTATION NOTES -->
+      ${consults.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">📝 Consultation Notes (${consults.length})</div>
+        <div style="${bodyStyle};padding:0">
+          ${consults.map((c,i)=>`
+            <div style="padding:14px;${i>0?'border-top:1px solid #F0F4F8':''}">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-weight:700;font-size:13px">${c.by}</span>
+                <span style="font-family:monospace;font-size:11px;color:var(--text-muted)">${c.time}</span>
+              </div>
+              ${c.subjective?`<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;margin-right:6px">S</span>${c.subjective}</div>`:''}
+              ${c.objective?`<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--indigo);text-transform:uppercase;margin-right:6px">O</span>${c.objective}</div>`:''}
+              ${c.assessment?`<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-right:6px">A</span><strong>${c.assessment}</strong></div>`:''}
+              ${c.plan?`<div><span style="font-size:10px;font-weight:700;color:var(--emerald);text-transform:uppercase;margin-right:6px">P</span>${c.plan}</div>`:''}
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- NURSING NOTES -->
+      ${nursingNotes.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">🩺 Nursing Notes (${nursingNotes.length})</div>
+        <div style="${bodyStyle};padding:0">
+          ${nursingNotes.map((n,i)=>`
+            <div style="padding:10px 14px;${i>0?'border-top:1px solid #F0F4F8':''}">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-weight:600;font-size:12px">${n.by}</span>
+                <span style="font-family:monospace;font-size:11px;color:var(--text-muted)">${n.time}</span>
+              </div>
+              <div>${n.note}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- PREVIOUS VISITS -->
+      ${allVisits.length > 0 ? `
+      <div style="${sectionStyle}">
+        <div style="${headStyle}">🔄 Previous Visits (${allVisits.length})</div>
+        <div style="${bodyStyle};padding:0">
+          ${allVisits.sort((a,b)=>new Date(b.admitTime)-new Date(a.admitTime)).map((v,i)=>`
+            <div style="padding:10px 14px;${i>0?'border-top:1px solid #F0F4F8':''}display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-weight:600">${v.admitTime} <span style="font-size:11px;padding:1px 7px;border-radius:8px;font-weight:700;background:${v.status==='Discharged'?'#E8F5E9':v.status==='OPD'?'#E8EAF6':'#E0F7FA'};color:${v.status==='Discharged'?'var(--emerald)':v.status==='OPD'?'var(--indigo)':'var(--teal)'};margin-left:6px">${v.status}</span></div>
+                <div style="color:var(--text-muted);font-size:12px">${v.diagnosis||'—'} ${v.dischargeCondition?'· Discharge: '+v.dischargeCondition:''}</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="closeModal();showPatientHistoryPDF('${v.id}')">View →</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+    </div>
+    <div class="modal-footer" style="position:sticky;bottom:0;background:white;z-index:10">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-outline" onclick="printHistoryPDF('${pid}')">🖨 Print / Save PDF</button>
+      <button class="btn btn-outline" style="border-color:var(--teal);color:var(--teal)" onclick="closeModal();showAISummary('${pid}')">🤖 AI Summary</button>
+      ${S.currentRole==='Doctor' ? `<button class="btn btn-primary" onclick="closeModal();openPatient('${pid}')">➕ New Consultation</button>` : ''}
+    </div>
+  </div>`);
+}
+
+function printHistoryPDF(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  const body = document.getElementById('history-pdf-body');
+  if (!body) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Clinical_Record_${p?.ehrId}_${p?.name?.replace(/\s/g,'_')}</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'DM Sans', sans-serif; padding: 24px; max-width: 800px; margin: 0 auto; color: #1A2332; font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #CBD5E1; }
+      th { background: #F0F4F8; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #64748B; }
+      @media print { body { padding: 0; } @page { margin: 1.5cm; } }
+    </style>
+  </head><body>
+    ${body.innerHTML}
+    <script>window.onload=function(){window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
 }
 
 // ============================================================
