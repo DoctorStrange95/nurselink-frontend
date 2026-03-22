@@ -5478,6 +5478,12 @@ function renderNetworkPage() {
     const el = document.getElementById('dm-msgs');
     if(el) el.scrollTop = el.scrollHeight;
   }, 50);
+
+  // Load live data
+  if (IS_LIVE) {
+    if (activeTab==='feed') loadNetworkFeed().then(()=>renderNetworkPage());
+    if (activeTab==='dms' && S._dmTo) loadNetworkDMs(S._dmTo);
+  }
 }
 
 function buildAnonHistory(pid) {
@@ -5546,18 +5552,22 @@ function submitNetPost() {
   const p = caseId ? S.patients.find(x=>x.id===caseId) : null;
   const caseHistory = caseId ? buildAnonHistory(caseId) : null;
   if(!S.network) S.network = {posts:[],dms:{}};
-  S.network.posts.push({
+  const localPost = {
     id: 'NP'+Date.now(),
     authorId: myId,
-    text,
-    tag,
+    text, tag,
     caseLabel: caseHistory ? caseHistory.label : null,
     caseHistory: caseHistory || null,
-    time: ts(),
-    likes: [],
-    replies: []
-  });
+    time: ts(), likes: [], replies: []
+  };
+  S.network.posts.push(localPost);
   S._networkTab = 'feed';
+
+  if (IS_LIVE) {
+    apiPost('/network/posts', { text, tag, case_label: localPost.caseLabel, case_history: caseHistory }).then(res => {
+      if (res) localPost.id = String(res.id);
+    });
+  }
   save();
   renderNetworkPage();
 }
@@ -5569,6 +5579,7 @@ function likePost(postId) {
   if(!post.likes) post.likes=[];
   const idx = post.likes.indexOf(myId);
   if(idx>=0) post.likes.splice(idx,1); else post.likes.push(myId);
+  if (IS_LIVE && !/^NP/.test(post.id)) apiPost('/network/posts/'+post.id+'/like', {});
   save();
   renderNetworkPage();
 }
@@ -5581,6 +5592,7 @@ function submitReply(postId) {
   if(!post.replies) post.replies=[];
   post.replies.push({ by:getCurrentStaffName(), text, time:ts() });
   S._replyTo = null;
+  if (IS_LIVE && !/^NP/.test(postId)) apiPost('/network/posts/'+postId+'/replies', { text });
   save();
   renderNetworkPage();
 }
@@ -5592,9 +5604,51 @@ function sendDM(toId) {
   if(!S.network) S.network={posts:[],dms:{}};
   const dmKey = [myId, toId].sort().join('_');
   if(!S.network.dms[dmKey]) S.network.dms[dmKey]=[];
-  S.network.dms[dmKey].push({ from:myId, text, time:ts(), read:false });
+  const msg = { from:myId, text, time:ts(), read:false };
+  S.network.dms[dmKey].push(msg);
+  if (IS_LIVE) apiPost('/network/dms/'+toId, { text });
   save();
   renderNetworkPage();
+}
+
+async function loadNetworkDMs(peerId) {
+  if (!IS_LIVE) return;
+  const myId = window._loggedInUser ? String(window._loggedInUser.id) : null;
+  if (!myId) return;
+  const res = await apiGet('/network/dms/'+peerId);
+  if (!res) return;
+  if (!S.network) S.network={posts:[],dms:{}};
+  const dmKey = [myId, peerId].sort().join('_');
+  S.network.dms[dmKey] = res.map(m=>({
+    from: String(m.sender_id),
+    text: m.text,
+    time: new Date(m.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
+    read: m.read
+  }));
+  renderNetworkPage();
+}
+
+async function loadNetworkFeed() {
+  if (!IS_LIVE) return;
+  const res = await apiGet('/network/posts');
+  if (!res || !Array.isArray(res)) return;
+  if (!S.network) S.network={posts:[],dms:{}};
+  S.network.posts = res.map(p=>({
+    id: String(p.id),
+    authorId: String(p.author_id),
+    authorName: p.author_name,
+    authorDept: p.author_dept,
+    text: p.text,
+    tag: p.tag,
+    caseLabel: p.case_label,
+    caseHistory: p.case_history ? (typeof p.case_history==='string' ? JSON.parse(p.case_history) : p.case_history) : null,
+    time: new Date(p.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
+    likes: [],
+    likeCount: parseInt(p.like_count)||0,
+    replies: [],
+    replyCount: parseInt(p.reply_count)||0,
+  }));
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
 }
 
 function openBedPatient(bedId) {
