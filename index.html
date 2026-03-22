@@ -828,10 +828,16 @@ function connectSocket() {
     socket.on('prescription:new', rx => {
       const pid = String(rx.patient_id);
       if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
-      // Skip if already added locally (avoid duplicate)
       if (S.prescriptions[pid].find(r => r.id === String(rx.id))) return;
       S.prescriptions[pid].unshift({ id:String(rx.id), drug:rx.drug, dose:rx.dose, route:rx.route, freq:rx.frequency, duration:rx.duration, instructions:rx.instructions, prescribedBy:rx.prescribed_by_name||'Doctor', time:new Date(rx.created_at).toLocaleString('en-IN'), status:rx.status });
-      renderAll();
+      // Only refresh tab content, don't full re-render during active consult
+      const tabDiv = document.getElementById('tab-content');
+      const pt = S.patients.find(x=>x.id===pid);
+      if (tabDiv && pt && pt.status==='OPD' && S.activePatientId===pid) {
+        tabDiv.innerHTML = renderOPDConsultTab(pid, pt);
+      } else {
+        renderAll();
+      }
     });
     socket.on('chat:message', msg => {
       const pid = String(msg.patient_id);
@@ -2803,7 +2809,8 @@ async function submitMed(pid) {
     const rx = { id:'RX'+Date.now()+Math.random(), drug:d.drug, dose:d.dose, route:d.route, freq:d.freq, duration:d.dur, instructions:d.inst, prescribedBy:getCurrentStaffName(), time:now(), status:'active' };
     S.prescriptions[pid].unshift(rx);
     S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'New Prescription', body:`${S.patients.find(p=>p.id===pid)?.name} — ${d.drug} ${d.dose}`, time:ts(), read:false });
-    if (IS_LIVE) {
+    const isRealPid = /^[0-9a-f-]{36}$/i.test(pid);
+    if (IS_LIVE && isRealPid) {
       apiPost('/prescriptions/' + pid, { drug:d.drug, dose:d.dose, route:d.route, frequency:d.freq, duration:d.dur, instructions:d.inst });
     }
   }
@@ -3015,7 +3022,8 @@ async function submitLabOrder(pid) {
   S.notifications.unshift({ id:'N'+Date.now(), role:'Lab Tech', title:'New Lab Orders', body:`${S.patients.find(p=>p.id===pid)?.name} — ${tests.length} test(s) ordered`, time:ts(), read:false });
   closeModal();
 
-  if (IS_LIVE) {
+  const isRealPid = /^[0-9a-f-]{36}$/i.test(pid);
+  if (IS_LIVE && isRealPid) {
     const payload = tests.map(t => ({ test_name:t.test, category:t.category||'', priority:t.priority }));
     const res = await apiPost('/labs/' + pid, { tests: payload });
     showToast(res ? `${tests.length} test(s) ordered ✓` : `Ordered locally — server sync failed`, res ? 'info' : 'warn');
@@ -3991,6 +3999,32 @@ async function submitAdmit() {
     });
     if (liveResult) {
       showToast(`${name} ${isIPD ? 'admitted to IPD' : 'consultation saved'} ✓`, 'info');
+      // Swap local pid with real DB UUID across all state
+      const dbId = String(liveResult.id);
+      const pt = S.patients.find(x=>x.id===pid);
+      if (pt && dbId && dbId !== pid) {
+        pt.id = dbId;
+        pt.ehrId = liveResult.ehr_id || pt.ehrId;
+        // Move all sub-records from local pid to dbId
+        ['prescriptions','vitals','labOrders','consultNotes','nursingNotes','chat','mar'].forEach(key => {
+          if (S[key][pid]) { S[key][dbId] = S[key][pid]; delete S[key][pid]; }
+        });
+        if (S.vaccinations?.[pid]) { S.vaccinations[dbId] = S.vaccinations[pid]; delete S.vaccinations[pid]; }
+        // Update queue entry
+        const q = (S.opdQueue||[]).find(x=>x.pid===pid);
+        if (q) q.pid = dbId;
+        // Now sync any pending prescriptions/labs that were blocked
+        const pendingRx = (S.prescriptions[dbId]||[]).filter(r=>r.id.startsWith('RX'));
+        for (const r of pendingRx) {
+          apiPost('/prescriptions/'+dbId, { drug:r.drug, dose:r.dose, route:r.route, frequency:r.freq, duration:r.duration, instructions:r.instructions });
+        }
+        const pendingLabs = (S.labOrders[dbId]||[]).filter(l=>l.id.startsWith('L'));
+        if (pendingLabs.length) {
+          apiPost('/labs/'+dbId, { tests: pendingLabs.map(l=>({ test_name:l.test, category:l.category||'', priority:l.priority })) });
+        }
+        // Update activePatientId to new dbId
+        pid = dbId;
+      }
     } else {
       showToast(`Saved locally — server sync failed`, 'warn');
     }
@@ -5481,7 +5515,10 @@ function renderNetworkPage() {
 
   // Load live data
   if (IS_LIVE) {
-    if (activeTab==='feed') loadNetworkFeed().then(()=>renderNetworkPage());
+    if (activeTab==='feed') loadNetworkFeed().then(()=>{
+      // Only re-render if no input is focused (prevents dropdown flash on mobile)
+      if (!document.activeElement || document.activeElement.tagName === 'BODY') renderNetworkPage();
+    });
     if (activeTab==='dms' && S._dmTo) loadNetworkDMs(S._dmTo);
   }
 }
