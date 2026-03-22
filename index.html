@@ -686,10 +686,11 @@ async function doLogin() {
 }
 
 async function tryLoadLiveData() {
-  const [staffRes, patientsRes, alertsRes] = await Promise.all([
+  const [staffRes, patientsRes, alertsRes, queueRes] = await Promise.all([
     apiGet('/staff'),
     apiGet('/patients'),
-    apiGet('/alerts')
+    apiGet('/alerts'),
+    apiGet('/queue')
   ]);
   if (!staffRes && !patientsRes) return false;
 
@@ -755,6 +756,19 @@ async function tryLoadLiveData() {
       acked: !!a.acknowledged_by
     }));
     if (liveAlerts.length > 0) S.alerts = liveAlerts;
+  }
+
+  if (queueRes && Array.isArray(queueRes)) {
+    S.opdQueue = queueRes.map(q => ({
+      id: String(q.id),
+      pid: String(q.patient_id),
+      name: q.name || '',
+      uhid: q.ehr_id || '',
+      cc: q.chief_complaint || '',
+      token: q.token_no || '',
+      time: q.created_at ? new Date(q.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '',
+      status: q.status || 'Waiting'
+    }));
   }
 
   return true;
@@ -2042,10 +2056,16 @@ function printOPDRx() {
 function finaliseConsult(id) {
   const p = S.patients.find(x=>x.id===id);
   if (!p) return;
-  p.consulted = true; // marks as consulted
+  p.consulted = true;
   if (S.opdQueue) {
     const q = S.opdQueue.find(x=>x.pid===id);
-    if (q) q.status = 'Done';
+    if (q) {
+      q.status = 'Done';
+      // Update backend queue status if queue entry has a real UUID id
+      if (IS_LIVE && q.id && /^[0-9a-f-]{36}$/i.test(String(q.id))) {
+        apiPatch('/queue/' + q.id + '/status', { status: 'Done' });
+      }
+    }
   }
   closeModal();
   S.activePatientId = null;
@@ -2790,8 +2810,15 @@ async function discontinueMed(pid, rxId) {
   rx.dcTime = now();
   S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:"Medication DC'd", body:`${rx.drug} discontinued by ${getCurrentStaffName()}`, time:ts(), read:false });
   showToast(`${rx.drug} discontinued`);
-  if (IS_LIVE) await apiPatch('/prescriptions/' + rxId + '/discontinue', {});
+  // Only call API if it's a real UUID (not a locally generated RX... id)
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rxId);
+  if (IS_LIVE && isUUID) await apiPatch('/prescriptions/' + rxId + '/discontinue', {});
   save();
+  if (S.activePatientId) {
+    const tabDiv = document.getElementById('tab-content');
+    const pt = S.patients.find(x=>x.id===pid);
+    if (tabDiv && pt && pt.status==='OPD') tabDiv.innerHTML = renderOPDConsultTab(pid, pt);
+  }
 }
 
 function showAddVaccineModal(pid) {
@@ -3831,6 +3858,12 @@ async function submitAdmit() {
   if (isIPD && bed) {
     const bedObj = S.beds.find(b=>b.id===bed);
     if (bedObj) bedObj.status = 'occupied';
+  }
+
+  // Add OPD patient to queue
+  if (!isIPD) {
+    if (!S.opdQueue) S.opdQueue = [];
+    S.opdQueue.unshift({ pid, name, uhid: ehrId, cc, time: ts(), status: 'Waiting' });
   }
 
   S.vitals[pid] = [];
