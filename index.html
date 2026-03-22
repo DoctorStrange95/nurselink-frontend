@@ -737,7 +737,10 @@ async function tryLoadLiveData() {
       })(),
       chiefComplaint: p.chief_complaint || p.chiefComplaint || '',
       allergies: p.allergies || '',
-      bloodGroup: p.blood_group || p.bloodGroup || ''
+      bloodGroup: p.blood_group || p.bloodGroup || '',
+      address: p.address || '',
+      pincode: p.pincode || '',
+      chronicDiseases: p.chronic_diseases || p.chronicDiseases || '',
     }));
     // Init empty sub-records for new patients
     S.patients.forEach(p => {
@@ -1043,6 +1046,7 @@ const INIT = {
   bills: {},
   opdQueue: [],
   vaccinations: {},
+  network: { posts:[], dms:{} },
 };
 
 let S = JSON.parse(localStorage.getItem('NL_STATE_V3')) || JSON.parse(JSON.stringify(INIT));
@@ -1197,6 +1201,7 @@ function renderSidebar() {
       { icon:'⚡', label:'Alerts', view:'alerts' },
       { icon:'📄', label:'Discharge', view:'discharge' },
       { icon:'🔢', label:'OPD Queue', view:'queue' },
+      { icon:'🩺', label:'Dr. Network', view:'network' },
     ],
     Nurse: [
       { icon:'🏥', label:'My Patients', view:'patients' },
@@ -1284,8 +1289,13 @@ function renderMain() {
     billslist: renderBillsListPage,
     register: renderRegisterPage,
     queue: renderQueuePage,
+    network: renderNetworkPage,
   };
   if (view === 'patientDetail') { renders.patientDetail(); return; }
+  // Admin cannot access patient write views
+  if (S.currentRole === 'Admin' && ['patients','admit','prescriptions','labs','discharge','vitals','mar'].includes(view)) {
+    renders.analytics(); return;
+  }
   (renders[view] || renders.patients)();
 }
 
@@ -2106,7 +2116,7 @@ function renderIPDDetail(id) {
       <span class="badge badge-teal">IPD</span>
       <span class="badge badge-indigo">LOS ${los}d</span>
       ${role==='Doctor' ? `<button class="btn btn-warn btn-sm" onclick="markDischarge('${id}')">📄 Discharge</button>` : ''}
-      <button class="btn btn-danger btn-sm" onclick="triggerSOS('${id}')">🚨 SOS</button>
+      ${role !== 'Admin' ? `<button class="btn btn-danger btn-sm" onclick="triggerSOS('${id}')">🚨 SOS</button>` : '<span class="badge badge-indigo" style="font-size:10px">👁 View Only</span>'}
     </div>
 
     <div class="tabs">
@@ -3737,6 +3747,19 @@ function renderAdmitForm() {
         </div>
         <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="ad-bmi" readonly placeholder="Enter height & weight"></div>
         <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints"></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Address</label><input class="form-control" id="ad-address" placeholder="Street / Area / Locality"></div>
+          <div class="form-group"><label class="form-label">Pincode</label><input class="form-control" id="ad-pincode" placeholder="6-digit pincode" maxlength="6" type="number"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Chronic / Pre-existing Diseases</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+            ${['Diabetes','Hypertension','Asthma','COPD','Heart Disease','Chronic Kidney Disease','Liver Disease','Epilepsy','Thyroid Disorder','Cancer','HIV/AIDS','Tuberculosis','Stroke','Obesity','Arthritis'].map(d=>`
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;background:var(--panel);padding:4px 10px;border-radius:20px;border:1px solid var(--border)">
+                <input type="checkbox" class="ad-chronic-cb" value="${d}"> ${d}
+              </label>`).join('')}
+          </div>
+          <input class="form-control mt-2" id="ad-chronic-other" placeholder="Other (type here)" style="margin-top:6px">
+        </div>
       </div>
     </div>
 
@@ -3789,6 +3812,28 @@ function renderAdmitForm() {
             <select class="form-control" id="ad-type">
               <option>Post-OPD Consultation</option><option>Direct IPD</option><option>Emergency</option><option>Transfer</option>
             </select>
+          </div>
+          <!-- Insurance -->
+          <div class="form-group">
+            <label class="form-label">Insurance</label>
+            <div class="flex gap-3 mb-2">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="no" checked onchange="document.getElementById('ins-details').style.display='none'"> No Insurance</label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="yes" onchange="document.getElementById('ins-details').style.display='block'"> Has Insurance</label>
+            </div>
+            <div id="ins-details" style="display:none">
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">Insurance Company *</label><input class="form-control" id="ad-ins-company" placeholder="e.g. Star Health, ICICI Lombard"></div>
+                <div class="form-group"><label class="form-label">Policy Number *</label><input class="form-control" id="ad-ins-policy" placeholder="Policy number"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">Member ID / Card No.</label><input class="form-control" id="ad-ins-member" placeholder="Member ID on card"></div>
+                <div class="form-group"><label class="form-label">Coverage Type</label>
+                  <select class="form-control" id="ad-ins-type">
+                    <option>Cashless</option><option>Reimbursement</option><option>TPA</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3861,6 +3906,20 @@ async function submitAdmit() {
     chiefComplaint: cc,
     allergies: allergy || 'None Known',
     bloodGroup: bg,
+    address: document.getElementById('ad-address')?.value.trim() || '',
+    pincode: document.getElementById('ad-pincode')?.value.trim() || '',
+    chronicDiseases: (() => {
+      const checked = [...document.querySelectorAll('.ad-chronic-cb:checked')].map(c=>c.value);
+      const other = document.getElementById('ad-chronic-other')?.value.trim();
+      if(other) checked.push(other);
+      return checked.join(', ');
+    })(),
+    insurance: document.querySelector('input[name="ins-toggle"]:checked')?.value === 'yes' ? {
+      company: document.getElementById('ad-ins-company')?.value.trim(),
+      policy: document.getElementById('ad-ins-policy')?.value.trim(),
+      member: document.getElementById('ad-ins-member')?.value.trim(),
+      type: document.getElementById('ad-ins-type')?.value,
+    } : null,
   };
 
   S.patients.unshift(patient);
@@ -3916,7 +3975,19 @@ async function submitAdmit() {
       diag_type: 'Provisional',
       height_cm: parseFloat(document.getElementById('ad-height')?.value) || null,
       weight_kg: parseFloat(document.getElementById('ad-weight')?.value) || null,
-      bmi: parseFloat(document.getElementById('ad-bmi')?.value) || null
+      bmi: parseFloat(document.getElementById('ad-bmi')?.value) || null,
+      address: document.getElementById('ad-address')?.value.trim() || null,
+      pincode: document.getElementById('ad-pincode')?.value.trim() || null,
+      chronic_diseases: (() => {
+        const checked = [...document.querySelectorAll('.ad-chronic-cb:checked')].map(c=>c.value);
+        const other = document.getElementById('ad-chronic-other')?.value.trim();
+        if(other) checked.push(other);
+        return checked.join(', ') || null;
+      })(),
+      insurance_company: document.querySelector('input[name="ins-toggle"]:checked')?.value==='yes' ? document.getElementById('ad-ins-company')?.value.trim() : null,
+      insurance_policy: document.querySelector('input[name="ins-toggle"]:checked')?.value==='yes' ? document.getElementById('ad-ins-policy')?.value.trim() : null,
+      insurance_member: document.querySelector('input[name="ins-toggle"]:checked')?.value==='yes' ? document.getElementById('ad-ins-member')?.value.trim() : null,
+      insurance_type: document.querySelector('input[name="ins-toggle"]:checked')?.value==='yes' ? document.getElementById('ad-ins-type')?.value : null,
     });
     if (liveResult) {
       showToast(`${name} ${isIPD ? 'admitted to IPD' : 'consultation saved'} ✓`, 'info');
@@ -4859,81 +4930,157 @@ function renderAnalyticsPage() {
   const active = S.patients.filter(p=>p.status==='Active').length;
   const opd = S.patients.filter(p=>p.status==='OPD').length;
   const discharged = S.patients.filter(p=>p.status==='Discharged').length;
-  const totalBeds = S.beds.length;
+  const totalBeds = S.beds.length || 1;
   const occupiedBeds = S.beds.filter(b=>b.status==='occupied').length;
   const occupancyPct = Math.round((occupiedBeds/totalBeds)*100);
   const unackedAlerts = S.alerts.filter(a=>!a.acked).length;
-  // Doctor workload
   const doctors = S.staff.filter(s=>s.role==='Doctor');
   const nurses = S.staff.filter(s=>s.role==='Nurse');
-  main.innerHTML = `
-    <div class="section-title">Analytics Dashboard</div>
-    <div class="section-sub">Institution-wide overview — real time</div>
 
-    <div class="grid-3 mb-4">
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--teal)">${active}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Active IPD Patients</div>
-        </div>
+  // Diagnosis frequency
+  const diagFreq = {};
+  S.patients.forEach(p=>{ if(p.diagnosis) diagFreq[p.diagnosis]=(diagFreq[p.diagnosis]||0)+1; });
+  const topDiag = Object.entries(diagFreq).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  // Alert types
+  const alertTypes = {};
+  S.alerts.forEach(a=>{ alertTypes[a.title]=(alertTypes[a.title]||0)+1; });
+  const topAlerts = Object.entries(alertTypes).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Doctor workloads
+  const docWorkload = doctors.map(d=>({
+    name: d.name.split(' ').slice(-1)[0],
+    ipd: S.patients.filter(p=>p.doctorId===d.id&&p.status==='Active').length,
+    opd: S.patients.filter(p=>p.doctorId===d.id&&p.status==='OPD').length,
+  }));
+
+  // LOS distribution
+  const losData = [0,0,0,0,0]; // 0-1, 2-3, 4-7, 8-14, 15+
+  S.patients.filter(p=>p.status==='Active'||p.status==='Discharged').forEach(p=>{
+    const d = calcLOS(p.admitTime)||0;
+    if(d<=1) losData[0]++;
+    else if(d<=3) losData[1]++;
+    else if(d<=7) losData[2]++;
+    else if(d<=14) losData[3]++;
+    else losData[4]++;
+  });
+
+  // Staff mix
+  const roleCount = {};
+  S.staff.forEach(s=>{ roleCount[s.role]=(roleCount[s.role]||0)+1; });
+
+  const totalPts = active + opd + discharged || 1;
+  const avgLOS = (() => {
+    const pts = S.patients.filter(p=>p.status==='Active'&&p.admitTime);
+    if(!pts.length) return 0;
+    return (pts.reduce((s,p)=>s+(calcLOS(p.admitTime)||0),0)/pts.length).toFixed(1);
+  })();
+
+  main.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="section-title">Analytics Dashboard</div>
+        <div class="section-sub">Real-time · ${new Date().toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
       </div>
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--indigo)">${opd}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">OPD Consultations Today</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body" style="text-align:center">
-          <div style="font-size:36px;font-weight:800;color:var(--emerald)">${discharged}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Discharged</div>
-        </div>
-      </div>
+      <button class="btn btn-outline btn-sm" onclick="refreshLiveData()">↻ Refresh</button>
     </div>
 
+    <!-- KPI STRIP -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
+      ${[
+        [active,'Active IPD','#00B4A6'],
+        [opd,'OPD Today','#5C6BC0'],
+        [discharged,'Discharged','#2E7D32'],
+        [occupancyPct+'%','Bed Occupancy',occupancyPct>85?'#C62828':occupancyPct>60?'#E65100':'#2E7D32'],
+        [unackedAlerts,'Alerts',unackedAlerts>0?'#C62828':'#2E7D32'],
+        [avgLOS+'d','Avg LOS','#F57C00'],
+      ].map(([v,l,c])=>`
+        <div class="card" style="cursor:default">
+          <div class="card-body" style="text-align:center;padding:12px">
+            <div style="font-size:26px;font-weight:800;color:${c}">${v}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${l}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <!-- ROW 1: NCD/Infectious Diagnosis + Bed grid -->
     <div class="grid-2 mb-4">
       <div class="card">
-        <div class="card-header"><h3>🛏 Bed Occupancy</h3></div>
+        <div class="card-header"><h3>🦠 Diagnoses — NCD & Infectious</h3></div>
         <div class="card-body">
-          <div style="font-size:32px;font-weight:800;color:${occupancyPct>85?'var(--red)':occupancyPct>60?'var(--amber)':'var(--emerald)'}">${occupancyPct}%</div>
-          <div class="text-muted mb-3">${occupiedBeds} of ${totalBeds} beds occupied</div>
-          <div class="workload-bar" style="height:12px">
-            <div class="workload-fill ${occupancyPct>85?'high':occupancyPct>60?'med':''}" style="width:${occupancyPct}%"></div>
-          </div>
-          <div class="mt-4">
-            <div class="section-title" style="font-size:14px;margin-bottom:8px">Bed Grid</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:8px">
-              ${S.beds.map(b=>`
-                <div onclick="openBedPatient('${b.id}')" style="background:${b.status==='available'?'#E8F5E9':b.status==='occupied'?'#FFEBEE':'#FFF3E0'};border:1.5px solid ${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'};border-radius:8px;padding:8px;text-align:center;cursor:${b.status==='occupied'?'pointer':'default'};font-size:11px;font-weight:700;color:${b.status==='available'?'var(--emerald)':b.status==='occupied'?'var(--red)':'var(--amber)'}">
-                  ${b.id}<br><span style="font-weight:400;font-size:10px">${b.status==='available'?'Free':b.status==='occupied'?'Occ.':'Res.'}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
+          <div style="position:relative;height:240px"><canvas id="diag-chart"></canvas></div>
         </div>
       </div>
-
       <div class="card">
-        <div class="card-header"><h3>⚡ Unacknowledged Alerts</h3></div>
+        <div class="card-header"><h3>🛏 Bed Occupancy — ${occupancyPct}%</h3></div>
         <div class="card-body">
-          <div style="font-size:32px;font-weight:800;color:${unackedAlerts>0?'var(--red)':'var(--emerald)'}">${unackedAlerts}</div>
-          <div class="text-muted mb-3">pending acknowledgement</div>
-          <div class="card-header" style="margin:0 -16px"><h3>👥 Staff On Duty</h3></div>
-          <div class="mt-3">
-            ${doctors.map(d=>{
-              const pts = S.patients.filter(p=>p.doctorId===d.id&&p.status==='Active').length;
-              return `<div class="flex items-center justify-between mb-2">
-                <div><div style="font-size:13px;font-weight:600">${d.name}</div><div class="text-muted">${d.dept}</div></div>
-                <span class="badge ${pts>3?'badge-red':pts>1?'badge-amber':'badge-teal'}">${pts} pts</span>
-              </div>`;
-            }).join('')}
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px;margin-bottom:12px">
+            ${S.beds.map(b=>`
+              <div onclick="${b.status==='occupied'?`openBedPatient('${b.id}')`:''}" style="background:${b.status==='available'?'#E8F5E9':b.status==='occupied'?'#FFEBEE':'#FFF3E0'};border:1.5px solid ${b.status==='available'?'#2E7D32':b.status==='occupied'?'#C62828':'#E65100'};border-radius:6px;padding:6px 4px;text-align:center;cursor:${b.status==='occupied'?'pointer':'default'};font-size:10px;font-weight:700;color:${b.status==='available'?'#2E7D32':b.status==='occupied'?'#C62828':'#E65100'}">
+                ${b.id}<br><span style="font-weight:400;font-size:9px">${b.status==='available'?'Free':b.status==='occupied'?'Occ.':'Res.'}</span>
+              </div>`).join('')||'<div class="text-muted">No beds configured</div>'}
+          </div>
+          <div style="display:flex;gap:12px;font-size:11px;color:var(--text-muted)">
+            <span style="color:#2E7D32">■ Free (${S.beds.filter(b=>b.status==='available').length})</span>
+            <span style="color:#C62828">■ Occupied (${occupiedBeds})</span>
+            <span style="color:#E65100">■ Reserved (${S.beds.filter(b=>b.status==='reserved').length})</span>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- India Disease Burden Map -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3>🗺 India Disease Burden Map</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm ${true?'btn-primary':'btn-outline'}" id="map-btn-all" onclick="renderIndiaMap('all')">All</button>
+          <button class="btn btn-outline btn-sm" id="map-btn-ncd" onclick="renderIndiaMap('ncd')">NCD</button>
+          <button class="btn btn-outline btn-sm" id="map-btn-inf" onclick="renderIndiaMap('inf')">Infectious</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Based on patient pincodes · deeper colour = higher burden</div>
+        <div id="india-map-container" style="width:100%;min-height:420px;display:flex;align-items:center;justify-content:center">
+          <div class="text-muted">Loading map...</div>
+        </div>
+        <div id="india-map-legend" style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text-muted)">
+          <span>0</span>
+          <div style="width:200px;height:10px;border-radius:4px;background:linear-gradient(to right,#FEE5D9,#FC4E2A,#800026)"></div>
+          <span id="map-legend-max">max</span>
+          <span style="margin-left:12px">patients</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pincode outbreak tracker -->
+    <div class="card mb-4">
+      <div class="card-header"><h3>📍 Pincode-wise Patient Distribution</h3><span class="text-muted" style="font-size:11px">Potential outbreak tracking</span></div>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>Pincode</th><th>Patients</th><th>Diagnoses / Conditions</th><th>Alert</th></tr></thead>
+          <tbody>
+            ${(() => {
+              const pincodeMap = {};
+              S.patients.filter(p=>p.pincode).forEach(p=>{
+                if(!pincodeMap[p.pincode]) pincodeMap[p.pincode]={count:0,diags:new Set(),names:[]};
+                pincodeMap[p.pincode].count++;
+                if(p.diagnosis) pincodeMap[p.pincode].diags.add(p.diagnosis);
+                if(p.chronicDiseases) p.chronicDiseases.split(',').forEach(d=>pincodeMap[p.pincode].diags.add(d.trim()));
+              });
+              return Object.entries(pincodeMap).sort((a,b)=>b[1].count-a[1].count).map(([pin,data])=>{
+                const alert = data.count >= 3 ? '<span class="badge badge-red">⚠ Cluster</span>' : data.count >= 2 ? '<span class="badge badge-amber">Monitor</span>' : '—';
+                return `<tr><td class="mono fw-600">${pin}</td><td>${data.count}</td><td style="font-size:11px">${[...data.diags].slice(0,4).join(', ')||'—'}</td><td>${alert}</td></tr>`;
+              }).join('') || '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:16px">No address data — add pincode when registering patients</td></tr>';
+            })()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active patients table -->
     <div class="card">
-      <div class="card-header"><h3>🏥 Active IPD Patients</h3></div>
+      <div class="card-header"><h3>🏥 All Active IPD Patients</h3></div>
       <div class="card-body" style="padding:0">
         <table class="data-table">
           <thead><tr><th>UHID</th><th>Patient</th><th>Bed</th><th>Doctor</th><th>Diagnosis</th><th>LOS</th><th>Alerts</th></tr></thead>
@@ -4943,11 +5090,11 @@ function renderAnalyticsPage() {
               const alerts = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
               const los = calcLOS(p.admitTime);
               return `<tr onclick="openPatient('${p.id}')" style="cursor:pointer">
-                <td class="mono">${p.ehrId||'—'}</td>
+                <td class="mono" style="font-size:11px">${p.ehrId||'—'}</td>
                 <td class="fw-600">${p.name}</td>
                 <td>${p.bed||'—'}</td>
-                <td>${doc?.name||'—'}</td>
-                <td style="font-size:11px">${p.diagnosis}</td>
+                <td style="font-size:12px">${doc?.name||'—'}</td>
+                <td style="font-size:11px">${p.diagnosis||'—'}</td>
                 <td>${los}d</td>
                 <td>${alerts>0?`<span class="badge badge-red">${alerts}</span>`:'—'}</td>
               </tr>`;
@@ -4957,6 +5104,497 @@ function renderAnalyticsPage() {
       </div>
     </div>
   `;
+
+  // Draw only diagnosis chart
+  setTimeout(() => {
+    const NCD_KEYWORDS = ['diabetes','hypertension','htn','asthma','copd','obesity','cancer','cardiac','heart','thyroid','arthritis','epilepsy','stroke','ckd','kidney','liver','cirrhosis'];
+    const INF_KEYWORDS = ['fever','typhoid','malaria','dengue','tuberculosis','tb','covid','pneumonia','hiv','hepatitis','cholera','diarrhea','infection','sepsis','meningitis','influenza','leptospira'];
+
+    const ncdFreq = {}, infFreq = {};
+    S.patients.forEach(p => {
+      const allDiags = ((p.diagnosis||'') + ',' + (p.chronicDiseases||'')).toLowerCase();
+      NCD_KEYWORDS.forEach(k => { if(allDiags.includes(k)) ncdFreq[k]=(ncdFreq[k]||0)+1; });
+      INF_KEYWORDS.forEach(k => { if(allDiags.includes(k)) infFreq[k]=(infFreq[k]||0)+1; });
+    });
+    const ncdTop = Object.entries(ncdFreq).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const infTop = Object.entries(infFreq).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const labels = [...ncdTop.map(([k])=>k.charAt(0).toUpperCase()+k.slice(1)), ...infTop.map(([k])=>k.charAt(0).toUpperCase()+k.slice(1))];
+    const ncdData = [...ncdTop.map(([,v])=>v), ...infTop.map(()=>0)];
+    const infData = [...ncdTop.map(()=>0), ...infTop.map(([,v])=>v)];
+
+    if(document.getElementById('diag-chart') && labels.length) {
+      new Chart(document.getElementById('diag-chart'), {
+        type:'bar', indexAxis:'y',
+        data:{ labels, datasets:[
+          { label:'NCD', data:ncdData, backgroundColor:'#5C6BC0', borderRadius:3 },
+          { label:'Infectious', data:infData, backgroundColor:'#C62828', borderRadius:3 }
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10}}}}, scales:{ x:{stacked:true,ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(0,0,0,0.05)'}}, y:{stacked:true,ticks:{color:'#64748B',font:{size:10}},grid:{display:false}} } }
+      });
+    } else if(document.getElementById('diag-chart')) {
+      const ctx = document.getElementById('diag-chart').getContext('2d');
+      ctx.fillStyle='#94a3b8'; ctx.font='13px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('No diagnosis data yet',200,120);
+    }
+  }, 50);
+  setTimeout(() => renderIndiaMap('all'), 150);
+}
+
+const PINCODE_STATE = {
+  '11':'Delhi','12':'Haryana','13':'Haryana','14':'Punjab','15':'Punjab','16':'Punjab',
+  '17':'Himachal Pradesh','18':'Jammu & Kashmir','19':'Jammu & Kashmir',
+  '20':'Uttar Pradesh','21':'Uttar Pradesh','22':'Uttar Pradesh','23':'Uttar Pradesh',
+  '24':'Uttar Pradesh','25':'Uttar Pradesh','26':'Uttar Pradesh','27':'Uttar Pradesh',
+  '28':'Uttar Pradesh','29':'Uttar Pradesh',
+  '30':'Rajasthan','31':'Rajasthan','32':'Rajasthan','33':'Rajasthan','34':'Rajasthan',
+  '36':'Gujarat','37':'Gujarat','38':'Gujarat','39':'Gujarat',
+  '40':'Maharashtra','41':'Maharashtra','42':'Maharashtra','43':'Maharashtra','44':'Maharashtra',
+  '45':'Madhya Pradesh','46':'Madhya Pradesh','47':'Madhya Pradesh','48':'Madhya Pradesh',
+  '49':'Chhattisgarh',
+  '50':'Telangana','51':'Telangana','52':'Andhra Pradesh','53':'Andhra Pradesh','54':'Andhra Pradesh',
+  '56':'Karnataka','57':'Karnataka','58':'Karnataka','59':'Karnataka',
+  '60':'Tamil Nadu','61':'Tamil Nadu','62':'Tamil Nadu','63':'Tamil Nadu','64':'Tamil Nadu','65':'Tamil Nadu',
+  '66':'Kerala','67':'Kerala','68':'Kerala','69':'Kerala',
+  '70':'West Bengal','71':'West Bengal','72':'West Bengal','73':'West Bengal','74':'West Bengal',
+  '75':'Odisha','76':'Odisha','77':'Odisha',
+  '78':'Assam','79':'Assam',
+  '80':'Bihar','81':'Bihar','82':'Bihar','83':'Bihar','84':'Bihar',
+  '85':'Jharkhand','86':'Jharkhand',
+  '91':'Uttarakhand','92':'Uttarakhand',
+  '10':'Chandigarh'
+};
+
+const NCD_LIST_MAP = ['diabetes','hypertension','asthma','copd','heart disease','chronic kidney','stroke','cancer','obesity','thyroid','epilepsy','arthritis','liver disease'];
+const INF_LIST_MAP = ['tuberculosis','malaria','dengue','typhoid','cholera','diarrhoea','diarrhea','pneumonia','influenza','hiv','hepatitis','leptospirosis','chikungunya','covid','meningitis','encephalitis'];
+
+function renderIndiaMap(filter) {
+  ['all','ncd','inf'].forEach(k=>{
+    const btn = document.getElementById('map-btn-'+k);
+    if(btn) btn.className = k===filter ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  });
+
+  const stateCount = {};
+  S.patients.filter(p=>p.pincode && String(p.pincode).length>=2).forEach(p=>{
+    const prefix = String(p.pincode).substring(0,2);
+    const state = PINCODE_STATE[prefix];
+    if(!state) return;
+    const text = ((p.diagnosis||'')+','+(p.chronicDiseases||'')).toLowerCase();
+    const isNCD = NCD_LIST_MAP.some(k=>text.includes(k));
+    const isInf = INF_LIST_MAP.some(k=>text.includes(k));
+    if(filter==='ncd' && !isNCD) return;
+    if(filter==='inf' && !isInf) return;
+    stateCount[state] = (stateCount[state]||0)+1;
+  });
+
+  const maxVal = Math.max(...Object.values(stateCount), 1);
+  const el = document.getElementById('map-legend-max');
+  if(el) el.textContent = maxVal;
+
+  function getColor(state) {
+    const v = stateCount[state]||0;
+    if(v===0) return '#E8EDF2';
+    const t = v/maxVal;
+    if(filter==='ncd') {
+      const r=Math.round(198-(198-63)*t), g=Math.round(210-(210-84)*t), b=Math.round(245-(245-192)*t);
+      return `rgb(${r},${g},${b})`;
+    }
+    const r=Math.round(254+(128-254)*t), g=Math.round(224+(0-224)*t), b=Math.round(210+(38-210)*t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Simplified state SVG paths (approximate outlines, viewBox 80 18 300 265)
+  const statePaths = {
+    'Jammu & Kashmir':'M142,28 L170,22 L185,36 L178,55 L158,60 L138,50 Z',
+    'Himachal Pradesh':'M170,55 L188,50 L195,65 L180,73 L165,68 Z',
+    'Punjab':'M140,55 L168,50 L172,68 L154,75 L136,68 Z',
+    'Haryana':'M168,68 L190,63 L196,80 L178,88 L162,83 Z',
+    'Delhi':'M178,85 L188,82 L190,90 L180,92 Z',
+    'Uttarakhand':'M188,63 L215,58 L218,75 L200,83 L185,78 Z',
+    'Uttar Pradesh':'M182,88 L240,80 L252,102 L238,122 L198,124 L178,108 Z',
+    'Rajasthan':'M136,72 L178,68 L190,90 L182,112 L156,122 L128,112 L118,90 Z',
+    'Gujarat':'M116,112 L150,108 L160,124 L150,148 L122,152 L106,138 L108,120 Z',
+    'Madhya Pradesh':'M156,122 L242,118 L250,138 L238,152 L192,155 L158,148 L148,133 Z',
+    'Chhattisgarh':'M240,122 L265,120 L272,142 L260,162 L242,162 L228,143 Z',
+    'Maharashtra':'M148,148 L230,143 L234,165 L215,185 L185,192 L158,185 L145,168 Z',
+    'Bihar':'M244,102 L278,97 L284,118 L265,128 L244,122 Z',
+    'Jharkhand':'M260,122 L288,118 L292,140 L272,148 L256,143 Z',
+    'Odisha':'M270,140 L298,134 L305,158 L288,172 L265,168 L258,153 Z',
+    'West Bengal':'M280,97 L308,90 L315,114 L298,130 L280,120 Z',
+    'Assam':'M310,84 L345,80 L348,97 L326,108 L306,102 Z',
+    'Telangana':'M205,162 L250,158 L254,180 L234,195 L205,190 Z',
+    'Andhra Pradesh':'M215,190 L272,180 L278,205 L255,220 L218,218 L205,202 Z',
+    'Karnataka':'M158,188 L215,190 L220,218 L195,235 L165,230 L152,212 Z',
+    'Tamil Nadu':'M195,232 L250,222 L254,250 L226,270 L198,270 L188,254 Z',
+    'Kerala':'M154,214 L188,220 L185,254 L162,268 L148,250 L148,230 Z',
+    'Goa':'M152,212 L165,210 L168,220 L155,222 Z',
+  };
+
+  const total = Object.values(stateCount).reduce((a,b)=>a+b,0);
+  const pathsSVG = Object.entries(statePaths).map(([state,d])=>{
+    const cnt = stateCount[state]||0;
+    const fill = getColor(state);
+    const nums = d.match(/-?[\d.]+/g)?.map(Number)||[];
+    const xs=[],ys=[];
+    for(let i=0;i<nums.length;i+=2){xs.push(nums[i]);ys.push(nums[i+1]);}
+    const cx = (xs.reduce((a,b)=>a+b,0)/xs.length).toFixed(1);
+    const cy = (ys.reduce((a,b)=>a+b,0)/ys.length).toFixed(1);
+    return `<g><path d="${d}" fill="${fill}" stroke="#fff" stroke-width="1.2"/>
+      ${cnt>0?`<text x="${cx}" y="${parseFloat(cy)+3}" style="font-size:8px;fill:${cnt/maxVal>0.5?'#fff':'#444'};font-weight:600;pointer-events:none" text-anchor="middle">${cnt}</text>`:''}
+      <title>${state}: ${cnt} patient${cnt!==1?'s':''}</title></g>`;
+  }).join('');
+
+  const container = document.getElementById('india-map-container');
+  if(!container) return;
+  container.innerHTML = `<svg viewBox="80 18 295 262" width="100%" style="max-height:440px">
+    <rect x="80" y="18" width="295" height="262" fill="none"/>
+    ${pathsSVG}
+    <text x="228" y="290" style="font-size:9px;fill:#94a3b8;font-family:sans-serif" text-anchor="middle">${total} patients mapped · hover for state details</text>
+  </svg>`;
+}
+
+// ============================================================
+// DOCTOR NETWORK
+// ============================================================
+
+function calcDoctorScore(docId) {
+  const pts = S.patients.filter(p=>String(p.doctorId)===String(docId));
+  const rx  = Object.values(S.prescriptions).flat().filter(r=>r.prescribedBy && S.staff.find(s=>s.id===docId&&s.name===r.prescribedBy)).length;
+  const notes = Object.values(S.consultNotes).flat().filter(n=>n.by && S.staff.find(s=>s.id===docId&&s.name===n.by)).length;
+  const labs  = Object.values(S.labOrders).flat().filter(l=>l.orderedBy && S.staff.find(s=>s.id===docId&&s.name===l.orderedBy)).length;
+  const dc    = pts.filter(p=>p.status==='Discharged').length;
+  const posts = (S.network?.posts||[]).filter(p=>p.authorId===docId).length;
+  const score = pts.length*10 + rx*2 + notes*5 + labs*2 + dc*15 + posts*3;
+  return score;
+}
+
+function getDoctorTier(score) {
+  if(score>=500) return {label:'Chief Consultant',icon:'🌟',color:'#F57C00'};
+  if(score>=300) return {label:'Senior Consultant',icon:'🏅',color:'#9C27B0'};
+  if(score>=150) return {label:'Consultant',icon:'🥇',color:'#1565C0'};
+  if(score>=60)  return {label:'Registrar',icon:'🥈',color:'#2E7D32'};
+  return {label:'Resident',icon:'🥉',color:'#546E7A'};
+}
+
+function anonymiseCase(p) {
+  const age = p.age ? Math.floor(p.age/10)*10+'s' : '?';
+  const g = p.gender==='M'?'Male':p.gender==='F'?'Female':'Unknown';
+  return `${age} ${g}, ${p.diagnosis||'Unknown diagnosis'}`;
+}
+
+function renderNetworkPage() {
+  const main = document.getElementById('main');
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+  const myName = getCurrentStaffName();
+  const allDoctors = S.staff.filter(s=>s.role==='Doctor');
+  const myScore = myId ? calcDoctorScore(myId) : 0;
+  const myTier = getDoctorTier(myScore);
+  const activeTab = S._networkTab || 'feed';
+
+  // Ranked doctors
+  const ranked = allDoctors.map(d=>({...d, score:calcDoctorScore(d.id), tier:getDoctorTier(calcDoctorScore(d.id))}))
+    .sort((a,b)=>b.score-a.score);
+
+  const posts = (S.network?.posts||[]).slice().reverse();
+
+  main.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="section-title">🩺 Doctor Network</div>
+        <div class="section-sub">Cross-institution clinical collaboration</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:800;color:${myTier.color}">${myTier.icon} ${myScore} pts</div>
+        <div style="font-size:11px;color:var(--text-muted)">${myTier.label}</div>
+      </div>
+    </div>
+
+    <div class="tabs mb-4">
+      <div class="tab ${activeTab==='feed'?'active':''}" onclick="S._networkTab='feed';renderNetworkPage()">📋 Case Feed</div>
+      <div class="tab ${activeTab==='dms'?'active':''}" onclick="S._networkTab='dms';renderNetworkPage()">💬 Messages</div>
+      <div class="tab ${activeTab==='rank'?'active':''}" onclick="S._networkTab='rank';renderNetworkPage()">🏆 Rankings</div>
+    </div>
+
+    ${activeTab==='feed' ? `
+    <!-- POST A CASE -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">Share a Case</div>
+        <select class="form-control mb-2" id="net-case-sel" onchange="previewNetCase(this.value)">
+          <option value="">— Attach a patient case (anonymised) —</option>
+          ${S.patients.map(p=>`<option value="${p.id}">${anonymiseCase(p)}</option>`).join('')}
+        </select>
+        <div id="net-case-preview" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;font-size:12px;color:#1E3A5F;margin-bottom:8px;line-height:1.8"></div>
+        <textarea class="form-control mb-2" id="net-post-text" rows="3" placeholder="Clinical discussion, findings, questions for peers..."></textarea>
+        <div class="flex gap-2">
+          <select class="form-control" id="net-post-tag" style="width:160px">
+            <option value="Discussion">Discussion</option>
+            <option value="Rare Case">Rare Case</option>
+            <option value="Question">Question</option>
+            <option value="Insight">Insight</option>
+          </select>
+          <button class="btn btn-primary" onclick="submitNetPost()">Post</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FEED -->
+    ${posts.length===0
+      ? '<div class="card"><div class="card-body text-muted">No posts yet. Be the first to share a case.</div></div>'
+      : posts.map(post => {
+          const author = S.staff.find(s=>s.id===post.authorId);
+          const tier = getDoctorTier(calcDoctorScore(post.authorId));
+          const liked = (post.likes||[]).includes(myId||myName);
+          return `<div class="card mb-3">
+            <div class="card-body">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-10">
+                  <div style="width:36px;height:36px;border-radius:50%;background:${tier.color};color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${(author?.name||'Dr').split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+                  <div style="margin-left:10px">
+                    <div style="font-weight:700;font-size:13px">${author?.name||'Unknown'} <span style="font-size:10px;color:${tier.color}">${tier.icon} ${tier.label}</span></div>
+                    <div style="font-size:11px;color:var(--text-muted)">${author?.dept||''} · ${post.time}</div>
+                  </div>
+                </div>
+                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--text-muted)">${post.tag}</span>
+              </div>
+              ${post.caseHistory ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:12px;color:#1E3A5F;margin-bottom:8px;line-height:1.8">
+                <div style="font-weight:700;margin-bottom:4px">📋 ${post.caseHistory.label} · ${post.caseHistory.type} · LOS ${post.caseHistory.los}</div>
+                <div><b>Chief Complaint:</b> ${post.caseHistory.chiefComplaint}</div>
+                <div><b>Diagnosis:</b> ${post.caseHistory.diagnosis} ${post.caseHistory.icd!=='—'?'('+post.caseHistory.icd+')':''} — ${post.caseHistory.diagType}</div>
+                ${post.caseHistory.chronicDiseases!=='—'?`<div><b>Chronic:</b> ${post.caseHistory.chronicDiseases}</div>`:''}
+                ${post.caseHistory.allergies!=='None Known'?`<div style="color:#C62828"><b>⚠ Allergies:</b> ${post.caseHistory.allergies}</div>`:''}
+                ${post.caseHistory.vitals?`<div><b>Vitals:</b> ${post.caseHistory.vitals}</div>`:''}
+                ${post.caseHistory.medications?.length?`<div><b>Medications:</b> ${post.caseHistory.medications.join(' · ')}</div>`:''}
+                ${post.caseHistory.labs?.length?`<div><b>Labs:</b> ${post.caseHistory.labs.join(' · ')}</div>`:''}
+                ${post.caseHistory.vaccines?.length?`<div><b>Vaccines:</b> ${post.caseHistory.vaccines.join(', ')}</div>`:''}
+                ${post.caseHistory.assessment?`<div><b>Assessment:</b> ${post.caseHistory.assessment}</div>`:''}
+                ${post.caseHistory.plan?`<div><b>Plan:</b> ${post.caseHistory.plan}</div>`:''}
+                ${post.caseHistory.dischargeCondition?`<div><b>Discharge:</b> ${post.caseHistory.dischargeCondition}</div>`:''}
+              </div>` : post.caseLabel ? `<div style="background:#EFF6FF;border-left:3px solid #3B82F6;padding:8px 12px;border-radius:0 6px 6px 0;font-size:12px;color:#1D4ED8;margin-bottom:8px">📋 Case: ${post.caseLabel}</div>` : ''}
+              <div style="font-size:13px;line-height:1.6;margin-bottom:10px">${post.text}</div>
+              <div class="flex items-center gap-3">
+                <button onclick="likePost('${post.id}')" style="background:none;border:none;cursor:pointer;font-size:12px;color:${liked?'var(--red)':'var(--text-muted)'};padding:0">❤ ${(post.likes||[]).length}</button>
+                <button onclick="S._replyTo='${post.id}';S._networkTab='feed';renderNetworkPage()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text-muted);padding:0">💬 ${(post.replies||[]).length}</button>
+                <button onclick="S._networkTab='dms';S._dmTo='${post.authorId}';renderNetworkPage()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--teal);padding:0">✉ Message</button>
+              </div>
+              ${S._replyTo===post.id?`<div class="mt-3 flex gap-2">
+                <input class="form-control" id="reply-text-${post.id}" placeholder="Write a reply...">
+                <button class="btn btn-primary btn-sm" onclick="submitReply('${post.id}')">Reply</button>
+              </div>`:''}
+              ${(post.replies||[]).length>0?`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+                ${post.replies.map(r=>`<div style="display:flex;gap:8px;margin-bottom:6px;font-size:12px">
+                  <span style="font-weight:600">${r.by}</span>
+                  <span style="color:var(--text-muted)">${r.text}</span>
+                  <span style="color:var(--text-muted);margin-left:auto">${r.time}</span>
+                </div>`).join('')}
+              </div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+    ` : ''}
+
+    ${activeTab==='dms' ? `
+    <div class="grid-2">
+      <!-- Doctor list -->
+      <div class="card">
+        <div class="card-header"><h3>Doctors</h3></div>
+        <div style="max-height:500px;overflow-y:auto">
+          ${ranked.map(d => {
+            if(d.id===myId) return '';
+            const unread = ((S.network?.dms||{})[`${d.id}_${myId||myName}`]||[]).filter(m=>!m.read&&m.from!==myId).length;
+            return `<div class="flex items-center gap-10 p-3" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);${S._dmTo===d.id?'background:var(--panel)':''}" onclick="S._dmTo='${d.id}';renderNetworkPage()">
+              <div style="width:36px;height:36px;border-radius:50%;background:${d.tier.color};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${d.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+              <div style="flex:1;margin-left:10px">
+                <div style="font-weight:600;font-size:13px">${d.name}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${d.dept} · ${d.tier.icon} ${d.tier.label}</div>
+              </div>
+              ${unread>0?`<span class="badge badge-red">${unread}</span>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <!-- DM window -->
+      <div class="card">
+        ${S._dmTo ? (() => {
+          const peer = S.staff.find(s=>s.id===S._dmTo);
+          const dmKey = [myId||myName, S._dmTo].sort().join('_');
+          const msgs = ((S.network?.dms||{})[dmKey]||[]);
+          return `<div class="card-header"><h3>💬 ${peer?.name||'Doctor'}</h3></div>
+          <div id="dm-msgs" style="height:350px;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px">
+            ${msgs.length===0?'<div class="text-muted" style="text-align:center;margin-top:100px">No messages yet</div>':''}
+            ${msgs.map(m=>{
+              const isMe = m.from===(myId||myName);
+              return `<div style="display:flex;${isMe?'justify-content:flex-end':''}">
+                <div style="max-width:75%;background:${isMe?'var(--teal)':'var(--panel)'};color:${isMe?'white':'inherit'};padding:8px 12px;border-radius:${isMe?'12px 12px 2px 12px':'12px 12px 12px 2px'};font-size:13px">
+                  ${m.text}
+                  <div style="font-size:10px;opacity:.6;margin-top:3px;text-align:right">${m.time}</div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="flex gap-2" style="padding:10px 14px;border-top:1px solid var(--border)">
+            <input class="form-control" id="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDM('${S._dmTo}')">
+            <button class="btn btn-primary" onclick="sendDM('${S._dmTo}')">Send</button>
+          </div>`;
+        })() : '<div class="card-body text-muted">Select a doctor to message</div>'}
+      </div>
+    </div>
+    ` : ''}
+
+    ${activeTab==='rank' ? `
+    <div class="card">
+      <div class="card-header"><h3>🏆 Doctor Rankings</h3><span class="text-muted" style="font-size:11px">Based on clinical activity</span></div>
+      <div class="card-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Doctor</th><th>Dept</th><th>Score</th><th>Tier</th><th>Patients</th><th>Notes</th><th>DC'd</th></tr></thead>
+          <tbody>
+            ${ranked.map((d,i)=>{
+              const pts = S.patients.filter(p=>String(p.doctorId)===String(d.id));
+              const notes = Object.values(S.consultNotes).flat().filter(n=>n.by&&n.by===d.name).length;
+              const dc = pts.filter(p=>p.status==='Discharged').length;
+              const isMe = d.id===myId;
+              return `<tr style="${isMe?'background:var(--panel);font-weight:600':''}">
+                <td style="font-size:16px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</td>
+                <td class="fw-600">${d.name}${isMe?' (you)':''}</td>
+                <td style="font-size:12px">${d.dept}</td>
+                <td style="font-weight:800;color:${d.tier.color}">${d.score}</td>
+                <td><span style="font-size:11px">${d.tier.icon} ${d.tier.label}</span></td>
+                <td>${pts.length}</td>
+                <td>${notes}</td>
+                <td>${dc}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <div style="padding:14px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">
+          Score = Patients×10 + Consult Notes×5 + Discharge×15 + Prescriptions×2 + Lab Orders×2 + Posts×3
+        </div>
+      </div>
+    </div>
+    ` : ''}
+  `;
+
+  // Auto-scroll DMs
+  setTimeout(()=>{
+    const el = document.getElementById('dm-msgs');
+    if(el) el.scrollTop = el.scrollHeight;
+  }, 50);
+}
+
+function buildAnonHistory(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  if(!p) return null;
+  const age = p.age ? Math.floor(p.age/10)*10+'s' : '?';
+  const g = p.gender==='M'?'Male':p.gender==='F'?'Female':'Unknown';
+  const rx = (S.prescriptions[pid]||[]).filter(r=>r.status==='active'||r.status==='dispensed');
+  const labs = (S.labOrders[pid]||[]).filter(l=>l.result);
+  const notes = (S.consultNotes[pid]||[]);
+  const vitals = (S.vitals[pid]||[])[0];
+  const los = calcLOS(p.admitTime);
+  const vaccines = (S.vaccinations?.[pid]||[]);
+
+  return {
+    label: `${age} ${g}, ${p.diagnosis||'Unknown diagnosis'}`,
+    type: p.status==='OPD'?'OPD':'IPD',
+    age: age, gender: g,
+    chiefComplaint: p.chiefComplaint || '—',
+    diagnosis: p.diagnosis || '—',
+    icd: p.icd || '—',
+    diagType: p.diagType || 'Provisional',
+    chronicDiseases: p.chronicDiseases || '—',
+    allergies: p.allergies || 'None Known',
+    los: los ? los+'d' : 'Same day',
+    admissionType: p.admissionType || '—',
+    dischargeCondition: p.dischargeCondition || null,
+    vitals: vitals ? `BP ${vitals.bpSys}/${vitals.bpDia}, SpO₂ ${vitals.spo2}%, Pulse ${vitals.pulse}, Temp ${vitals.temp}°C` : null,
+    medications: rx.map(r=>`${r.drug} ${r.dose} ${r.route} ${r.freq} × ${r.duration}`),
+    labs: labs.map(l=>`${l.test}: ${l.result} (${l.resultStatus||''})`),
+    vaccines: vaccines.map(v=>`${v.name} ${v.dose} ${v.doseNum||''}`),
+    assessment: notes[0]?.assessment || null,
+    plan: notes[0]?.plan || null,
+  };
+}
+
+function previewNetCase(pid) {
+  const el = document.getElementById('net-case-preview');
+  if(!el) return;
+  if(!pid) { el.style.display='none'; return; }
+  const h = buildAnonHistory(pid);
+  if(!h) { el.style.display='none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px">📋 ${h.label} · ${h.type} · LOS ${h.los}</div>
+    <div><b>Chief Complaint:</b> ${h.chiefComplaint}</div>
+    <div><b>Diagnosis:</b> ${h.diagnosis} ${h.icd!=='—'?'('+h.icd+')':''} — ${h.diagType}</div>
+    ${h.chronicDiseases!=='—'?`<div><b>Chronic Conditions:</b> ${h.chronicDiseases}</div>`:''}
+    ${h.allergies!=='None Known'?`<div style="color:#C62828"><b>⚠ Allergies:</b> ${h.allergies}</div>`:''}
+    ${h.vitals?`<div><b>Vitals:</b> ${h.vitals}</div>`:''}
+    ${h.medications.length?`<div><b>Medications (${h.medications.length}):</b> ${h.medications.join(' · ')}</div>`:''}
+    ${h.labs.length?`<div><b>Lab Results:</b> ${h.labs.join(' · ')}</div>`:''}
+    ${h.vaccines.length?`<div><b>Vaccines:</b> ${h.vaccines.join(', ')}</div>`:''}
+    ${h.assessment?`<div><b>Assessment:</b> ${h.assessment}</div>`:''}
+    ${h.plan?`<div><b>Plan:</b> ${h.plan}</div>`:''}
+    ${h.dischargeCondition?`<div><b>Discharge Condition:</b> ${h.dischargeCondition}</div>`:''}
+  `;
+}
+
+function submitNetPost() {
+  const text = document.getElementById('net-post-text')?.value.trim();
+  const caseId = document.getElementById('net-case-sel')?.value;
+  const tag = document.getElementById('net-post-tag')?.value || 'Discussion';
+  if(!text) { alert('Write something before posting'); return; }
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : getCurrentStaffName();
+  const p = caseId ? S.patients.find(x=>x.id===caseId) : null;
+  const caseHistory = caseId ? buildAnonHistory(caseId) : null;
+  if(!S.network) S.network = {posts:[],dms:{}};
+  S.network.posts.push({
+    id: 'NP'+Date.now(),
+    authorId: myId,
+    text,
+    tag,
+    caseLabel: caseHistory ? caseHistory.label : null,
+    caseHistory: caseHistory || null,
+    time: ts(),
+    likes: [],
+    replies: []
+  });
+  S._networkTab = 'feed';
+  save();
+  renderNetworkPage();
+}
+
+function likePost(postId) {
+  const post = (S.network?.posts||[]).find(p=>p.id===postId);
+  if(!post) return;
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : getCurrentStaffName();
+  if(!post.likes) post.likes=[];
+  const idx = post.likes.indexOf(myId);
+  if(idx>=0) post.likes.splice(idx,1); else post.likes.push(myId);
+  save();
+  renderNetworkPage();
+}
+
+function submitReply(postId) {
+  const text = document.getElementById('reply-text-'+postId)?.value.trim();
+  if(!text) return;
+  const post = (S.network?.posts||[]).find(p=>p.id===postId);
+  if(!post) return;
+  if(!post.replies) post.replies=[];
+  post.replies.push({ by:getCurrentStaffName(), text, time:ts() });
+  S._replyTo = null;
+  save();
+  renderNetworkPage();
+}
+
+function sendDM(toId) {
+  const text = document.getElementById('dm-input')?.value.trim();
+  if(!text) return;
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : getCurrentStaffName();
+  if(!S.network) S.network={posts:[],dms:{}};
+  const dmKey = [myId, toId].sort().join('_');
+  if(!S.network.dms[dmKey]) S.network.dms[dmKey]=[];
+  S.network.dms[dmKey].push({ from:myId, text, time:ts(), read:false });
+  save();
+  renderNetworkPage();
 }
 
 function openBedPatient(bedId) {
@@ -5132,7 +5770,42 @@ function renderDoctorDashboard() {
     + '<div class="card">'
     + '<div class="card-header"><h3>📌 Pending Tasks</h3></div>'
     + '<div class="card-body" style="padding:0">'+taskRows+'</div>'
+    + '</div>'
+
+    + '<div class="card mt-4">'
+    + '<div class="card-header"><h3>🦠 NCD & Infectious Disease Load (IDSP)</h3></div>'
+    + '<div class="card-body"><div style="position:relative;height:220px"><canvas id="doc-diag-chart"></canvas></div></div>'
     + '</div>';
+
+  setTimeout(() => {
+    const NCD = ['Diabetes','Hypertension','Asthma','COPD','Heart Disease','Chronic Kidney Disease','Stroke','Cancer','Obesity','Thyroid','Epilepsy','Arthritis','Liver Disease'];
+    const INF = ['Tuberculosis','Malaria','Dengue','Typhoid','Cholera','Diarrhoea','Pneumonia','Influenza','HIV','Hepatitis','Leptospirosis','Chikungunya','COVID-19','Meningitis','Encephalitis'];
+    const ncdCount = {}, infCount = {};
+    myPts.forEach(p => {
+      const text = ((p.diagnosis||'') + ',' + (p.chronicDiseases||'')).toLowerCase();
+      NCD.forEach(k => { if(text.includes(k.toLowerCase())) ncdCount[k]=(ncdCount[k]||0)+1; });
+      INF.forEach(k => { if(text.includes(k.toLowerCase())) infCount[k]=(infCount[k]||0)+1; });
+    });
+    const ncdTop = Object.entries(ncdCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const infTop = Object.entries(infCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const labels = [...ncdTop.map(([k])=>k), ...infTop.map(([k])=>k)];
+    const ncdData = [...ncdTop.map(([,v])=>v), ...infTop.map(()=>0)];
+    const infData = [...ncdTop.map(()=>0), ...infTop.map(([,v])=>v)];
+    if(document.getElementById('doc-diag-chart') && labels.length) {
+      new Chart(document.getElementById('doc-diag-chart'), {
+        type:'bar', indexAxis:'y',
+        data:{ labels, datasets:[
+          { label:'NCD', data:ncdData, backgroundColor:'#5C6BC0', borderRadius:3 },
+          { label:'Infectious', data:infData, backgroundColor:'#C62828', borderRadius:3 }
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10}}}}, scales:{ x:{stacked:true,ticks:{color:'#64748B',font:{size:10}},grid:{color:'rgba(0,0,0,0.05)'}}, y:{stacked:true,ticks:{color:'#64748B',font:{size:10}},grid:{display:false}} } }
+      });
+    } else if(document.getElementById('doc-diag-chart')) {
+      const ctx = document.getElementById('doc-diag-chart').getContext('2d');
+      ctx.fillStyle='#94a3b8'; ctx.font='13px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('No diagnosis data yet', 200, 110);
+    }
+  }, 50);
 }
 
 // ============================================================
@@ -5360,6 +6033,19 @@ function renderRegisterPage() {
         </div>
         <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="reg-bmi" readonly placeholder="Enter height & weight"></div>
         <div class="form-group"><label class="form-label">Chief Complaint</label><textarea class="form-control" id="reg-cc" rows="2" placeholder="Presenting complaint..."></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Address</label><input class="form-control" id="reg-address" placeholder="Street / Area / Locality"></div>
+          <div class="form-group"><label class="form-label">Pincode</label><input class="form-control" id="reg-pincode" placeholder="6-digit pincode" maxlength="6" type="number"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Chronic / Pre-existing Diseases</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+            ${['Diabetes','Hypertension','Asthma','COPD','Heart Disease','Chronic Kidney Disease','Liver Disease','Epilepsy','Thyroid Disorder','Cancer','HIV/AIDS','Tuberculosis','Stroke','Obesity','Arthritis'].map(d=>`
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;background:var(--panel);padding:4px 10px;border-radius:20px;border:1px solid var(--border)">
+                <input type="checkbox" class="reg-chronic-cb" value="${d}"> ${d}
+              </label>`).join('')}
+          </div>
+          <input class="form-control mt-2" id="reg-chronic-other" placeholder="Other (type here)" style="margin-top:6px">
+        </div>
       </div>
     </div>
     <div class="card mt-4">
@@ -5425,6 +6111,14 @@ function saveRegistration() {
     height:document.getElementById('reg-height').value,
     weight:document.getElementById('reg-weight').value,
     bmi:document.getElementById('reg-bmi').value,
+    address: document.getElementById('reg-address')?.value.trim() || '',
+    pincode: document.getElementById('reg-pincode')?.value.trim() || '',
+    chronicDiseases: (() => {
+      const checked = [...document.querySelectorAll('.reg-chronic-cb:checked')].map(c=>c.value);
+      const other = document.getElementById('reg-chronic-other')?.value.trim();
+      if(other) checked.push(other);
+      return checked.join(', ');
+    })(),
   };
   S.patients.unshift(patient);
   S.vitals[pid] = [];
@@ -5640,5 +6334,6 @@ document.addEventListener('click', e => {
 // INIT — startup() is called by DOMContentLoaded listener above
 // startup() shows login or loads live data then calls renderAll()
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </body>
 </html>
