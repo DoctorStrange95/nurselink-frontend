@@ -2738,8 +2738,10 @@ async function submitAdmit() {
 
   showPayload({ event: isIPD ? 'PATIENT_ADMITTED_IPD' : 'OPD_CONSULTATION', patient_ehr_id: ehrId, patient_name: name, bed: bed || 'N/A', assigned_doctor: doc?.name, assigned_nurse: nurse?.name || 'N/A' });
   S.activePatientId = pid;
-  S.activeTab[pid] = 'overview';
-  save();
+  S.activeTab[pid] = isIPD ? 'overview' : 'prescribe';
+  S.activeNavItem[S.currentRole] = 'patients';
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  renderAll();
 }
 
 // ALERTS PAGE
