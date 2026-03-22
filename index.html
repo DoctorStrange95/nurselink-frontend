@@ -338,6 +338,7 @@ body { font-family: var(--font); background: var(--panel); color: var(--text); m
 .w-full { width: 100%; }
 hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
+/* ── TABLET ── */
 @media (max-width: 900px) {
   #sidebar { display: none; }
   #right-panel { display: none; }
@@ -345,12 +346,143 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
   .form-row, .form-row-3 { grid-template-columns: 1fr; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
+
+/* ── MOBILE ── */
+@media (max-width: 600px) {
+  /* Topbar compact */
+  #topbar { padding: 0 12px; height: 52px; gap: 8px; }
+  #topbar .logo { font-size: 15px; }
+  #clock { display: none; }
+  #refresh-btn { display: none !important; }
+  #demo-badge, #live-badge, #offline-badge { font-size: 9px; padding: 2px 6px; }
+
+  /* Layout — full width, no sidebar */
+  #app { flex-direction: column; height: calc(100vh - 52px); }
+  #main { padding: 12px; padding-bottom: 72px; /* space for bottom nav */ }
+
+  /* Bottom navigation bar */
+  #mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    background: var(--navy);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    z-index: 110;
+    align-items: stretch;
+  }
+  #mobile-bottom-nav .mbn-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.5);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    gap: 2px;
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    font-family: var(--font);
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #mobile-bottom-nav .mbn-item.active { color: var(--teal); }
+  #mobile-bottom-nav .mbn-item span:first-child { font-size: 18px; }
+
+  /* Slide-in sidebar drawer for mobile */
+  #sidebar {
+    display: block !important;
+    position: fixed;
+    top: 52px; left: -260px;
+    width: 260px; height: calc(100vh - 52px);
+    z-index: 200;
+    transition: left 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+  }
+  #sidebar.open { left: 0; }
+  #sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 199;
+    top: 52px;
+  }
+  #sidebar-overlay.show { display: block; }
+
+  /* Right panel hidden on mobile — alerts accessible via topbar bell */
+  #right-panel { display: none !important; }
+
+  /* Cards */
+  .card { border-radius: 8px; }
+  .card-body { padding: 12px; }
+  .card-header { padding: 10px 12px; }
+
+  /* Patient grid — single column */
+  .patient-grid { grid-template-columns: 1fr; gap: 10px; }
+
+  /* Vitals grid — 2 cols on mobile */
+  .vitals-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .vital-box { padding: 8px; }
+  .vital-box .vb-value { font-size: 18px; }
+
+  /* Tables — horizontal scroll */
+  .data-table { font-size: 11px; }
+  .data-table th, .data-table td { padding: 6px 8px; }
+
+  /* Modals — full screen on mobile */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100% !important;
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  /* Section title */
+  .section-title { font-size: 17px; }
+
+  /* Tabs — scrollable */
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; gap: 0; }
+  .tab { white-space: nowrap; padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
+
+  /* Buttons */
+  .btn { padding: 8px 12px; font-size: 12px; }
+  .btn-sm { padding: 5px 8px; font-size: 11px; }
+
+  /* KPI grid — wrap to 2 cols */
+  .kpi-grid-mobile { grid-template-columns: repeat(2,1fr) !important; }
+
+  /* Alert feed shown as drawer sheet when bell tapped */
+  #notif-dropdown { width: 100%; border-radius: 0 0 10px 10px; }
+
+  /* Form improvements for touch */
+  .form-control { padding: 11px 12px; font-size: 16px; /* prevents iOS zoom */ }
+  select.form-control { font-size: 16px; }
+
+  /* IPD detail header — wrap */
+  .ipd-header-flex { flex-wrap: wrap; gap: 6px; }
+
+  /* Patient card actions — full width */
+  .patient-card-body .flex { flex-wrap: wrap; }
+
+  /* Chat */
+  .chat-area { height: 220px; }
+
+  /* MAR rows */
+  .mar-row { flex-wrap: wrap; gap: 8px; }
+  .mar-actions { flex-wrap: wrap; }
+}
 </style>
 </head>
 <body>
 
 <!-- TOPBAR -->
 <div id="topbar">
+  <button id="menu-btn" onclick="toggleMobileSidebar()" style="display:none;background:none;border:none;color:white;font-size:22px;cursor:pointer;padding:4px 6px;line-height:1">☰</button>
   <div class="logo">NurseLink<span> IPD</span></div>
   <div id="role-switcher"></div>
   <div id="demo-badge" style="display:none">DEMO</div>
@@ -392,6 +524,7 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
 <!-- APP -->
 <div id="app" style="display:none;">
   <div id="sidebar"></div>
+  <div id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
   <div id="main"></div>
   <div id="right-panel">
     <div class="rp-header flex items-center justify-between">
@@ -401,6 +534,9 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
     <div id="alert-feed"></div>
   </div>
 </div>
+
+<!-- MOBILE BOTTOM NAV -->
+<div id="mobile-bottom-nav" style="display:none"></div>
 
 <!-- SOS OVERLAY -->
 <div id="sos-overlay">
@@ -956,6 +1092,7 @@ function renderAll() {
   renderMain();
   renderAlertFeed();
   renderNotifBadge();
+  setupMobileUI();
 }
 
 function renderTopbar() {
@@ -1186,7 +1323,9 @@ function renderPatientCard(p) {
 function openPatient(id) {
   S.activePatientId = id;
   if (!S.activeTab[id]) S.activeTab[id] = 'overview';
-  save();
+  closeMobileSidebar();
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  renderAll();
   loadPatientData(id);
 }
 
@@ -4131,6 +4270,61 @@ function markQueueDone(pid) {
   const q = S.opdQueue.find(x=>x.pid===pid);
   if (q) { q.status='Done'; save(); }
 }
+
+// ============================================================
+// MOBILE HELPERS
+// ============================================================
+function isMobile() { return window.innerWidth <= 600; }
+
+function toggleMobileSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  sb.classList.toggle('open');
+  ov.classList.toggle('show');
+}
+
+function closeMobileSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebar-overlay')?.classList.remove('show');
+}
+
+function renderMobileBottomNav() {
+  if (!isMobile()) return;
+  const nav = document.getElementById('mobile-bottom-nav');
+  if (!nav) return;
+
+  const navMap = {
+    Doctor:      [{icon:'📊',label:'Dash',view:'analytics'},{icon:'🏥',label:'Patients',view:'patients'},{icon:'➕',label:'New',view:'admit'},{icon:'⚡',label:'Alerts',view:'alerts'},{icon:'☰',label:'More',view:'__menu'}],
+    Nurse:       [{icon:'🏥',label:'Patients',view:'patients'},{icon:'📊',label:'Vitals',view:'vitals'},{icon:'💊',label:'MAR',view:'mar'},{icon:'⚡',label:'Alerts',view:'alerts'},{icon:'☰',label:'More',view:'__menu'}],
+    Pharmacist:  [{icon:'💊',label:'Rx',view:'pharmacy'},{icon:'📦',label:'Inventory',view:'inventory'},{icon:'☰',label:'More',view:'__menu'}],
+    'Lab Tech':  [{icon:'🔬',label:'Orders',view:'labtech'},{icon:'📋',label:'Results',view:'results'},{icon:'☰',label:'More',view:'__menu'}],
+    Admin:       [{icon:'📈',label:'Analytics',view:'analytics'},{icon:'👥',label:'Staff',view:'staff'},{icon:'🛏',label:'Beds',view:'beds'},{icon:'☰',label:'More',view:'__menu'}],
+    Billing:     [{icon:'💰',label:'Billing',view:'billing'},{icon:'📋',label:'Bills',view:'billslist'},{icon:'☰',label:'More',view:'__menu'}],
+    Counter:     [{icon:'🏥',label:'Register',view:'register'},{icon:'🔢',label:'Queue',view:'queue'},{icon:'☰',label:'More',view:'__menu'}],
+  };
+
+  const items = navMap[S.currentRole] || navMap.Doctor;
+  const activeView = S.activeNavItem[S.currentRole] || getDefaultView();
+
+  nav.innerHTML = items.map(i => {
+    if (i.view === '__menu') {
+      return `<button class="mbn-item" onclick="toggleMobileSidebar()"><span>${i.icon}</span><span>${i.label}</span></button>`;
+    }
+    return `<button class="mbn-item ${activeView===i.view?'active':''}" onclick="closeMobileSidebar();setNav('${i.view}')"><span>${i.icon}</span><span>${i.label}</span></button>`;
+  }).join('');
+}
+
+function setupMobileUI() {
+  const mobile = isMobile();
+  const menuBtn = document.getElementById('menu-btn');
+  const mobileNav = document.getElementById('mobile-bottom-nav');
+  if (menuBtn) menuBtn.style.display = mobile ? 'block' : 'none';
+  if (mobileNav) mobileNav.style.display = mobile ? 'flex' : 'none';
+  if (mobile) renderMobileBottomNav();
+}
+
+window.addEventListener('resize', setupMobileUI);
 
 // ============================================================
 // CLOCK + SIMULATION
