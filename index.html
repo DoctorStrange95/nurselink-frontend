@@ -1240,30 +1240,45 @@ function renderPatientList() {
 
   const ipdPts = allPts.filter(p=>p.status==='Active');
   const opdPts = allPts.filter(p=>p.status==='OPD');
+  const dischPts = allPts.filter(p=>p.status==='Discharged'||p.status==='Expired');
   const activeList = S._patientListTab || 'ipd';
+  const searchQ = (S._patientSearch||'').toLowerCase();
+
+  // Apply search filter
+  const filterPts = (pts) => searchQ
+    ? pts.filter(p => p.name.toLowerCase().includes(searchQ) || (p.ehrId||'').toLowerCase().includes(searchQ) || (p.phone||'').includes(searchQ))
+    : pts;
 
   const main = document.getElementById('main');
   main.innerHTML = `
     <div class="flex items-center justify-between mb-3">
-      <div>
-        <div class="section-title">${role==='Nurse'?'My Patients':role==='Doctor'?'My Patients':'All Patients'}</div>
-      </div>
+      <div class="section-title">${role==='Nurse'?'My Patients':role==='Doctor'?'My Patients':'All Patients'}</div>
       ${role==='Doctor'?`<button class="btn btn-primary" onclick="setNav('admit')">➕ New Patient</button>`:''}
     </div>
 
+    <div class="form-group mb-3">
+      <input class="form-control" id="pt-search" placeholder="🔍 Search by name, UHID or phone..." value="${S._patientSearch||''}"
+        oninput="S._patientSearch=this.value;try{localStorage.setItem('NL_STATE_V3',JSON.stringify(S))}catch(e){};renderPatientList()">
+    </div>
+
     <div class="tabs" style="margin-bottom:16px">
-      <div class="tab ${activeList==='ipd'?'active':''}" onclick="S._patientListTab='ipd';save()">
-        🛏 IPD Inpatients <span class="badge badge-teal" style="margin-left:6px">${ipdPts.length}</span>
+      <div class="tab ${activeList==='ipd'?'active':''}" onclick="S._patientListTab='ipd';S._patientSearch='';renderPatientList()">
+        🛏 IPD <span class="badge badge-teal" style="margin-left:4px">${ipdPts.length}</span>
       </div>
-      <div class="tab ${activeList==='opd'?'active':''}" onclick="S._patientListTab='opd';save()">
-        🩺 OPD Consultations <span class="badge badge-indigo" style="margin-left:6px">${opdPts.length}</span>
+      <div class="tab ${activeList==='opd'?'active':''}" onclick="S._patientListTab='opd';S._patientSearch='';renderPatientList()">
+        🩺 OPD <span class="badge badge-indigo" style="margin-left:4px">${opdPts.length}</span>
+      </div>
+      <div class="tab ${activeList==='discharged'?'active':''}" onclick="S._patientListTab='discharged';S._patientSearch='';renderPatientList()">
+        ✅ Discharged <span class="badge badge-green" style="margin-left:4px">${dischPts.length}</span>
       </div>
     </div>
 
     <div class="patient-grid">
       ${activeList==='ipd'
-        ? (ipdPts.length===0 ? '<div class="text-muted">No active IPD patients.</div>' : ipdPts.map(p=>renderPatientCard(p)).join(''))
-        : (opdPts.length===0 ? '<div class="text-muted">No OPD consultations today. <button class="btn btn-primary btn-sm" onclick="setNav(\'admit\')">+ New Patient</button></div>' : opdPts.map(p=>renderPatientCard(p)).join(''))
+        ? (filterPts(ipdPts).length===0 ? '<div class="text-muted">No active IPD patients.</div>' : filterPts(ipdPts).map(p=>renderPatientCard(p)).join(''))
+        : activeList==='opd'
+        ? (filterPts(opdPts).length===0 ? '<div class="text-muted">No OPD consultations today. <button class="btn btn-primary btn-sm" onclick="setNav(\'admit\')">+ New Patient</button></div>' : filterPts(opdPts).map(p=>renderPatientCard(p)).join(''))
+        : (filterPts(dischPts).length===0 ? '<div class="text-muted">No discharged patients.</div>' : filterPts(dischPts).map(p=>renderPatientCard(p)).join(''))
       }
     </div>
   `;
@@ -1275,22 +1290,24 @@ function renderPatientCard(p) {
   const alerts = S.alerts.filter(a => a.patientId === p.id && !a.acked);
   const doc = S.staff.find(s => s.id === p.doctorId);
   const isOPD = p.status === 'OPD';
+  const isDisc = p.status === 'Discharged' || p.status === 'Expired';
   // LOS for IPD
   let los = '';
   if (!isOPD && p.admitTime) {
     const days = calcLOS(p.admitTime);
     los = `<span class="badge badge-indigo" style="font-size:10px">LOS ${days}d</span>`;
   }
+  const headerBg = isDisc ? 'var(--slate)' : isOPD ? 'var(--indigo)' : status==='critical' ? 'var(--red)' : status==='warning' ? 'var(--warn)' : 'var(--navy)';
   return `
     <div class="patient-card" onclick="openPatient('${p.id}')">
-      <div class="patient-card-header" style="background:${isOPD?'var(--indigo)':status==='critical'?'var(--red)':status==='warning'?'var(--warn)':'var(--navy)'}">
+      <div class="patient-card-header" style="background:${headerBg}">
         <div class="flex items-center justify-between">
           <div>
             <div class="pt-name">${p.name}</div>
-            <div class="pt-meta">${p.age}${p.gender} | ${isOPD?'OPD':'Bed '+p.bed} | ${p.ehrId}</div>
+            <div class="pt-meta">${p.age}${p.gender} | ${isOPD?'OPD':isDisc?'Discharged':'Bed '+p.bed} | ${p.ehrId}</div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-            <span class="badge ${isOPD?'badge-indigo':'badge-teal'}">${isOPD?'OPD':'IPD'}</span>
+            <span class="badge ${isOPD?'badge-indigo':isDisc?'badge-green':'badge-teal'}">${isOPD?'OPD':isDisc?'DC\'D':'IPD'}</span>
             ${los}
             ${alerts.length > 0 ? `<span class="badge badge-red">⚠ ${alerts.length}</span>` : ''}
           </div>
@@ -1299,18 +1316,23 @@ function renderPatientCard(p) {
       <div class="patient-card-body">
         <div class="pt-info-row"><span>Diagnosis</span><span style="max-width:160px;text-align:right;font-size:11px">${p.diagnosis||'—'}</span></div>
         <div class="pt-info-row"><span>Doctor</span><span>${doc?.name || '—'}</span></div>
-        <div class="pt-info-row"><span>${isOPD?'Visit':'Admitted'}</span><span>${p.admitTime}</span></div>
-        ${!isOPD && vitals ? `
+        <div class="pt-info-row"><span>${isOPD?'Visit':isDisc?'Discharged':'Admitted'}</span><span>${isDisc?(p.dischargeTime||p.admitTime):p.admitTime}</span></div>
+        ${isDisc ? `<div class="text-muted mt-2" style="font-size:11px">Condition: ${p.dischargeCondition||'Stable'}</div>` : ''}
+        ${!isOPD && !isDisc && vitals ? `
           <div class="mt-2 flex gap-2" style="flex-wrap:wrap">
             <span class="vital-pill ${vitals.bpSys>180?'critical':vitals.bpSys>160?'warn':''}">BP ${vitals.bpSys}/${vitals.bpDia}</span>
             <span class="vital-pill ${vitals.spo2<92?'critical':vitals.spo2<95?'warn':''}">SpO₂ ${vitals.spo2}%</span>
             <span class="vital-pill ${vitals.pulse>130||vitals.pulse<50?'critical':vitals.pulse>110?'warn':''}">♥ ${vitals.pulse}</span>
             <span class="vital-pill ${vitals.temp>39.5?'critical':vitals.temp>38.5?'warn':''}">🌡 ${vitals.temp}°C</span>
           </div>
-        ` : isOPD ? `<div class="text-muted mt-2" style="font-size:11px">${p.chiefComplaint||'No complaint noted'}</div>` : '<div class="text-muted mt-2" style="font-size:11px">No vitals recorded yet</div>'}
+        ` : isOPD ? `<div class="text-muted mt-2" style="font-size:11px">${p.chiefComplaint||'No complaint noted'}</div>` : !isDisc ? '<div class="text-muted mt-2" style="font-size:11px">No vitals recorded yet</div>' : ''}
         <div class="flex gap-2 mt-2" style="margin-top:10px">
-          ${isOPD
-            ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>`
+          ${isDisc
+            ? `<button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 View History</button>
+               <button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖 AI Summary</button>`
+            : isOPD
+            ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>
+               <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖</button>`
             : `<button class="btn btn-danger btn-sm" style="flex:1" onclick="event.stopPropagation();triggerSOS('${p.id}')">🚨 SOS</button>
                <button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">View →</button>`
           }
@@ -1384,10 +1406,41 @@ function renderOPDConsultation(id) {
 
 function renderOPDHistoryTab(id, p) {
   const notes = S.consultNotes[id] || [];
-  const prevPts = S.patients.filter(x=>x.phone===p.phone && x.id!==id);
+  // Find all visits for this patient by phone number
+  const prevVisits = p.phone
+    ? S.patients.filter(x => x.phone === p.phone && x.id !== id)
+    : [];
+
   return `
-    <div class="section-sub mb-3">Previous consultations for this patient</div>
-    ${notes.length===0 && prevPts.length===0 ? '<div class="card"><div class="card-body text-muted">No previous history found.</div></div>' : ''}
+    <div class="flex items-center justify-between mb-3">
+      <div class="section-sub" style="margin:0">Patient visit history</div>
+      <button class="btn btn-outline btn-sm" onclick="showAISummary('${id}')">🤖 AI Summary</button>
+    </div>
+
+    ${prevVisits.length > 0 ? `
+    <div class="card mb-3" style="border-left:3px solid var(--amber)">
+      <div class="card-header"><h3>🔄 Previous Visits (${prevVisits.length})</h3></div>
+      <div class="card-body" style="padding:0">
+        ${prevVisits.sort((a,b)=>new Date(b.admitTime)-new Date(a.admitTime)).map(v => {
+          const vRx = (S.prescriptions[v.id]||[]).filter(r=>r.status==='active'||r.status==='dispensed');
+          return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+            <div class="flex items-center justify-between mb-1">
+              <span class="fw-600 text-sm">${v.admitTime}</span>
+              <span class="badge ${v.status==='Discharged'?'badge-green':v.status==='OPD'?'badge-indigo':'badge-teal'}">${v.status}</span>
+            </div>
+            <div style="font-size:13px;font-weight:600">${v.diagnosis||'—'}</div>
+            ${v.dischargeCondition?`<div class="text-muted" style="font-size:11px">Discharge condition: ${v.dischargeCondition}</div>`:''}
+            ${vRx.length>0?`<div class="text-muted" style="font-size:11px;margin-top:4px">Rx: ${vRx.map(r=>r.drug+' '+r.dose).join(', ')}</div>`:''}
+            <button class="btn btn-outline btn-sm mt-2" style="font-size:10px" onclick="openPatient('${v.id}')">View Full Record →</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    ${notes.length===0 && prevVisits.length===0
+      ? '<div class="card"><div class="card-body text-muted">No previous history found for this patient.</div></div>'
+      : ''}
+
     ${notes.map(n=>`
       <div class="card mb-3" style="border-left:3px solid var(--teal)">
         <div class="card-header"><h3>${n.time}</h3><span class="text-muted">${n.by}</span></div>
@@ -1914,6 +1967,7 @@ function renderOverviewTab(id, p) {
         <button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">📊 Record Vitals</button>
         <button class="btn btn-outline" onclick="setTab('${id}','chat')">💬 Chat with Nurse</button>
         <button class="btn btn-outline" onclick="showAssignDoctorModal('${id}')">👨‍⚕️ Assign Doctor</button>
+        <button class="btn btn-outline" style="border-color:var(--teal);color:var(--teal)" onclick="showAISummary('${id}')">🤖 AI Summary</button>
       </div>
     </div>` : ''}
 
@@ -2536,6 +2590,113 @@ async function sendChat(pid) {
   if (input) input.value = '';
   if (IS_LIVE) await apiPost('/chat/' + pid, { message: msg });
   save();
+}
+
+// ============================================================
+// AI CLINICAL SUMMARY
+// ============================================================
+async function showAISummary(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
+
+  // Find all visits for this patient (same phone or same UHID pattern)
+  const allVisits = S.patients.filter(x =>
+    (p.phone && x.phone === p.phone) || x.id === pid
+  );
+
+  // Build clinical context
+  const rxList = (S.prescriptions[pid]||[]);
+  const activeRx = rxList.filter(r=>r.status==='active');
+  const labs = (S.labOrders[pid]||[]).filter(l=>l.result);
+  const vitals = (S.vitals[pid]||[]).slice(0,3);
+  const consults = (S.consultNotes[pid]||[]);
+
+  const context = {
+    patient: `${p.name}, ${p.age}Y/${p.gender==='M'?'Male':'Female'}, Blood Group: ${p.bloodGroup||'Unknown'}, Allergies: ${p.allergies||'None Known'}`,
+    visits: allVisits.map(v => ({
+      date: v.admitTime,
+      type: v.status==='OPD'?'OPD':v.status==='Discharged'?'Discharged IPD':'Active IPD',
+      diagnosis: v.diagnosis,
+      condition: v.dischargeCondition||v.status
+    })),
+    currentDiagnosis: p.diagnosis,
+    activeMedications: activeRx.map(r=>`${r.drug} ${r.dose} ${r.route} ${r.freq}`),
+    recentLabs: labs.slice(0,5).map(l=>`${l.test}: ${l.result} (${l.resultStatus||''})`),
+    recentVitals: vitals[0] ? `BP ${vitals[0].bpSys}/${vitals[0].bpDia}, SpO2 ${vitals[0].spo2}%, Pulse ${vitals[0].pulse}, Temp ${vitals[0].temp}°C` : 'No vitals',
+    consultNotes: consults.slice(0,2).map(c=>`${c.time} — ${c.assessment}`)
+  };
+
+  showModal(`<div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2>🤖 AI Clinical Summary — ${p.name}</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="ai-summary-content" style="min-height:120px">
+        <div style="text-align:center;padding:32px;color:var(--text-muted)">
+          <div style="font-size:24px;margin-bottom:8px">🤖</div>
+          <div>Generating clinical summary...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="showAISummary('${pid}')">🔄 Regenerate</button>
+    </div>
+  </div>`);
+
+  try {
+    const prompt = `You are a clinical assistant helping a doctor. Summarize the following patient data concisely in a structured clinical format.
+
+Patient: ${context.patient}
+Visit History: ${JSON.stringify(context.visits)}
+Current Diagnosis: ${context.currentDiagnosis}
+Active Medications: ${context.activeMedications.join(', ') || 'None'}
+Recent Lab Results: ${context.recentLabs.join('; ') || 'None'}
+Recent Vitals: ${context.recentVitals}
+Consultation Notes: ${context.consultNotes.join(' | ') || 'None'}
+
+Provide:
+1. A 2-3 sentence clinical summary of the patient's history
+2. Current medication list with any notable interactions or concerns
+3. Key clinical observations from vitals and labs
+4. Suggested follow-up points for the doctor
+
+Keep it concise and clinical. Use plain text, no markdown symbols.`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text || 'Could not generate summary.';
+
+    const el = document.getElementById('ai-summary-content');
+    if (el) {
+      // Format the response into sections
+      const lines = text.split('\n').filter(l=>l.trim());
+      el.innerHTML = `
+        <div style="background:var(--panel);border-radius:8px;padding:16px;font-size:13px;line-height:1.7">
+          ${lines.map(l => {
+            if (/^[1-4]\./.test(l.trim())) {
+              return `<div style="font-weight:700;color:var(--teal);margin-top:12px;margin-bottom:4px">${l}</div>`;
+            }
+            return `<div style="margin-bottom:4px">${l}</div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:var(--text-muted);font-style:italic">
+          ⚠ AI-generated summary — always verify clinically before acting on this information.
+        </div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById('ai-summary-content');
+    if (el) el.innerHTML = `<div class="text-muted" style="padding:16px">Could not generate summary. Check connection and try again.<br><small>${e.message}</small></div>`;
+  }
 }
 
 // ============================================================
