@@ -791,6 +791,8 @@ function connectSocket() {
     socket.on('vitals:new', v => {
       const pid = String(v.patient_id);
       if (!S.vitals[pid]) S.vitals[pid] = [];
+      // Skip if already added locally
+      if (S.vitals[pid].find(x => x.id === String(v.id))) return;
       S.vitals[pid].unshift({ id:String(v.id), time:new Date(v.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}), bpSys:v.bp_sys, bpDia:v.bp_dia, pulse:v.pulse, spo2:v.spo2, temp:v.temperature, rr:v.resp_rate, gcs:v.gcs, uo:v.urine_output, glucose:v.blood_glucose, drain:v.drain_output, pain:v.pain_score, notes:v.notes, nurse:v.recorded_by_name||'Staff' });
       renderAll();
     });
@@ -804,6 +806,8 @@ function connectSocket() {
     socket.on('prescription:new', rx => {
       const pid = String(rx.patient_id);
       if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
+      // Skip if already added locally (avoid duplicate)
+      if (S.prescriptions[pid].find(r => r.id === String(rx.id))) return;
       S.prescriptions[pid].unshift({ id:String(rx.id), drug:rx.drug, dose:rx.dose, route:rx.route, freq:rx.frequency, duration:rx.duration, instructions:rx.instructions, prescribedBy:rx.prescribed_by_name||'Doctor', time:new Date(rx.created_at).toLocaleString('en-IN'), status:rx.status });
       renderAll();
     });
