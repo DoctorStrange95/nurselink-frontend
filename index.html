@@ -723,7 +723,12 @@ async function tryLoadLiveData() {
       doctorId: String(p.doctor_id || p.doctorId || ''),
       nurseId: String(p.nurse_id || p.nurseId || ''),
       admissionType: p.admission_type || p.admissionType || '',
-      admitTime: p.admit_time || p.admitTime || '',
+      admitTime: (() => {
+        const t = p.admit_time || p.admitTime || '';
+        if (!t) return '';
+        try { return new Date(t).toLocaleString('en-IN', {day:'numeric',month:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+        catch(e) { return t; }
+      })(),
       status: (() => {
         const s = p.status || 'Active';
         // If DB says Active but no bed assigned, treat as OPD
@@ -3726,6 +3731,11 @@ function renderAdmitForm() {
           </div>
           <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ad-phone" placeholder="10-digit number"></div>
         </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Height (cm)</label><input class="form-control" id="ad-height" type="number" placeholder="165" oninput="calcAdmitBMI()"></div>
+          <div class="form-group"><label class="form-label">Weight (kg)</label><input class="form-control" id="ad-weight" type="number" placeholder="70" oninput="calcAdmitBMI()"></div>
+        </div>
+        <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="ad-bmi" readonly placeholder="Enter height & weight"></div>
         <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints"></textarea></div>
       </div>
     </div>
@@ -3903,7 +3913,10 @@ async function submitAdmit() {
       allergies: allergy || 'None Known',
       blood_group: bg || null,
       status: isIPD ? 'Active' : 'OPD',
-      diag_type: 'Provisional'
+      diag_type: 'Provisional',
+      height_cm: parseFloat(document.getElementById('ad-height')?.value) || null,
+      weight_kg: parseFloat(document.getElementById('ad-weight')?.value) || null,
+      bmi: parseFloat(document.getElementById('ad-bmi')?.value) || null
     });
     if (liveResult) {
       showToast(`${name} ${isIPD ? 'admitted to IPD' : 'consultation saved'} ✓`, 'info');
@@ -4337,25 +4350,172 @@ function submitLabResult(pid, labId, patientName) {
 function renderStaffPage() {
   const main = document.getElementById('main');
   const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)' };
+  const activeTab = S._adminTab || 'staff';
   main.innerHTML = `
     <div class="flex items-center justify-between mb-4">
-      <div><div class="section-title">Staff Management</div><div class="section-sub">${S.staff.length} staff members</div></div>
-      <button class="btn btn-primary" onclick="showAddStaffModal()">➕ Add Staff</button>
+      <div><div class="section-title">Admin Panel</div></div>
+      ${activeTab==='staff'?'<button class="btn btn-primary" onclick="showAddStaffModal()">➕ Add Staff</button>':''}
+      ${activeTab==='beds'?'<button class="btn btn-primary" onclick="showAddBedModal()">➕ Add Bed</button>':''}
+      ${activeTab==='insurance'?'<button class="btn btn-primary" onclick="showAddInsuranceModal()">➕ Add Insurer</button>':''}
     </div>
+    <div class="tabs mb-4">
+      <div class="tab ${activeTab==='staff'?'active':''}" onclick="S._adminTab='staff';renderStaffPage()">👥 Staff (${S.staff.length})</div>
+      <div class="tab ${activeTab==='beds'?'active':''}" onclick="S._adminTab='beds';renderStaffPage()">🛏 Beds (${S.beds.length})</div>
+      <div class="tab ${activeTab==='insurance'?'active':''}" onclick="S._adminTab='insurance';loadInsurance()">🏥 Insurance</div>
+    </div>
+
+    ${activeTab==='staff' ? `
     <div class="card">
-      ${S.staff.map(s => `
+      ${S.staff.length===0?'<div class="card-body text-muted">No staff found.</div>':S.staff.map(s => `
         <div class="staff-row">
           <div class="staff-avatar" style="background:${roleColors[s.role]||'var(--slate)'}">${s.name.split(' ').map(n=>n[0]).join('').substring(0,2)}</div>
           <div class="staff-info">
             <div class="staff-name">${s.name}</div>
             <div class="staff-dept">${s.role} · ${s.dept}</div>
-            <div class="staff-link">nurselink.hospital/staff/${s.empId.toLowerCase()}</div>
+            <div class="staff-link">nurselink.hospital/staff/${(s.empId||'').toLowerCase()}</div>
           </div>
           <span class="badge badge-${s.role==='Doctor'?'teal':s.role==='Nurse'?'indigo':s.role==='Pharmacist'?'green':s.role==='Lab Tech'?'amber':'indigo'}">${s.role}</span>
         </div>
       `).join('')}
-    </div>
+    </div>` : ''}
+
+    ${activeTab==='beds' ? `
+    <div class="card">
+      ${S.beds.length===0?'<div class="card-body text-muted">No beds configured.</div>':''}
+      <table class="data-table">
+        <thead><tr><th>Bed ID</th><th>Ward</th><th>Type</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${S.beds.map(b=>`<tr>
+            <td class="fw-600">${b.id}</td>
+            <td>${b.ward||'—'}</td>
+            <td>${b.type||'General'}</td>
+            <td><span class="badge ${b.status==='available'?'badge-green':b.status==='occupied'?'badge-red':'badge-amber'}">${b.status}</span></td>
+            <td>${b.status==='available'?`<button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="deleteBed('${b.id}')">Remove</button>`:'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    ${activeTab==='insurance' ? `
+    <div id="insurance-list"><div class="text-muted" style="padding:20px">Loading...</div></div>` : ''}
   `;
+  if (activeTab==='insurance') loadInsurance();
+}
+
+function showAddBedModal() {
+  showModal(`<div class="modal">
+    <div class="modal-header"><h2>🛏 Add Bed</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Bed ID *</label><input class="form-control" id="bed-id" placeholder="e.g. A-5, ICU-3"></div>
+        <div class="form-group"><label class="form-label">Ward *</label><input class="form-control" id="bed-ward" placeholder="e.g. Ward A, ICU"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Type</label>
+        <select class="form-control" id="bed-type">
+          <option>General</option><option>Private</option><option>Semi-Private</option><option>ICU</option><option>HDU</option><option>NICU</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddBed()">Add Bed</button>
+    </div>
+  </div>`);
+}
+
+async function submitAddBed() {
+  const bid = document.getElementById('bed-id').value.trim();
+  const ward = document.getElementById('bed-ward').value.trim();
+  const type = document.getElementById('bed-type').value;
+  if (!bid || !ward) { alert('Bed ID and Ward are required'); return; }
+  if (S.beds.find(b=>b.id===bid)) { alert('Bed ID already exists'); return; }
+  closeModal();
+  if (IS_LIVE) {
+    const res = await apiPost('/facility/beds', { bed_id: bid, ward, type });
+    if (res) S.beds.push({ id: res.id||bid, ward: res.ward||ward, type: res.type||type, status: 'available' });
+    else { showToast('Failed to add bed', 'error'); return; }
+  } else {
+    S.beds.push({ id: bid, ward, type, status: 'available' });
+  }
+  showToast(`Bed ${bid} added ✓`);
+  S._adminTab = 'beds';
+  save();
+  renderStaffPage();
+}
+
+async function deleteBed(bedId) {
+  if (!confirm(`Remove bed ${bedId}?`)) return;
+  S.beds = S.beds.filter(b=>b.id!==bedId);
+  if (IS_LIVE) {
+    await fetch(`${API_BASE}/facility/beds/${encodeURIComponent(bedId)}`, { method:'DELETE', headers:{ Authorization:'Bearer '+API_TOKEN }}).catch(()=>{});
+  }
+  showToast(`Bed ${bedId} removed`);
+  save();
+  renderStaffPage();
+}
+
+async function loadInsurance() {
+  S._adminTab = 'insurance';
+  const el = document.getElementById('insurance-list');
+  if (!el) { renderStaffPage(); return; }
+  let insurers = S._insurers || [];
+  if (IS_LIVE) {
+    const res = await apiGet('/facility/insurance');
+    if (res) { insurers = res; S._insurers = res; }
+  }
+  el.innerHTML = insurers.length === 0
+    ? '<div class="text-muted" style="padding:16px">No insurance companies added yet.</div>'
+    : `<div class="card"><table class="data-table">
+        <thead><tr><th>Company</th><th>Policy Types</th><th>Contact</th><th>Notes</th><th></th></tr></thead>
+        <tbody>${insurers.map(i=>`<tr>
+          <td class="fw-600">${i.name}</td>
+          <td style="font-size:12px">${i.policy_types||'—'}</td>
+          <td style="font-size:12px">${i.contact||'—'}</td>
+          <td style="font-size:12px">${i.notes||'—'}</td>
+          <td><button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="deleteInsurance(${i.id})">Remove</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+}
+
+function showAddInsuranceModal() {
+  showModal(`<div class="modal">
+    <div class="modal-header"><h2>🏥 Add Insurance Company</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Company Name *</label><input class="form-control" id="ins-name" placeholder="e.g. Star Health, ICICI Lombard"></div>
+      <div class="form-group"><label class="form-label">Policy Types Accepted</label><input class="form-control" id="ins-policy" placeholder="e.g. Cashless, Reimbursement, TPA"></div>
+      <div class="form-group"><label class="form-label">Contact / TPA Number</label><input class="form-control" id="ins-contact" placeholder="e.g. 1800-XXX-XXXX"></div>
+      <div class="form-group"><label class="form-label">Notes</label><input class="form-control" id="ins-notes" placeholder="e.g. Pre-auth required above ₹50,000"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddInsurance()">Add</button>
+    </div>
+  </div>`);
+}
+
+async function submitAddInsurance() {
+  const name = document.getElementById('ins-name').value.trim();
+  if (!name) { alert('Company name required'); return; }
+  const payload = { name, policy_types: document.getElementById('ins-policy').value.trim(), contact: document.getElementById('ins-contact').value.trim(), notes: document.getElementById('ins-notes').value.trim() };
+  closeModal();
+  if (IS_LIVE) {
+    const res = await apiPost('/facility/insurance', payload);
+    if (res) { if (!S._insurers) S._insurers=[]; S._insurers.push(res); showToast(`${name} added ✓`); }
+    else { showToast('Failed to add insurer', 'error'); return; }
+  } else {
+    if (!S._insurers) S._insurers=[]; S._insurers.push({...payload, id: Date.now()}); showToast(`${name} added`);
+  }
+  S._adminTab = 'insurance';
+  renderStaffPage();
+}
+
+async function deleteInsurance(id) {
+  if (!confirm('Remove this insurer?')) return;
+  if (S._insurers) S._insurers = S._insurers.filter(i=>i.id!==id);
+  if (IS_LIVE) await fetch(`${API_BASE}/facility/insurance/${id}`, { method:'DELETE', headers:{ Authorization:'Bearer '+API_TOKEN }}).catch(()=>{});
+  showToast('Insurer removed');
+  S._adminTab = 'insurance';
+  renderStaffPage();
 }
 
 function showAssignDoctorModal(id) {
@@ -4414,6 +4574,10 @@ function showAddStaffModal() {
         <div class="form-group"><label class="form-label">Department</label><input class="form-control" id="sf-dept" placeholder="e.g. Cardiology, Ward A"></div>
         <div class="form-group"><label class="form-label">Employee ID</label><input class="form-control" id="sf-emp" placeholder="e.g. D-003"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="sf-email" placeholder="staff@nurselink.in" type="email"></div>
+        <div class="form-group"><label class="form-label">Password *</label><input class="form-control" id="sf-pass" placeholder="Set login password" type="password"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -4422,16 +4586,59 @@ function showAddStaffModal() {
   </div>`);
 }
 
-function submitAddStaff() {
-  const name = document.getElementById('sf-name').value.trim();
-  const role = document.getElementById('sf-role').value;
-  const dept = document.getElementById('sf-dept').value.trim() || 'General';
+async function submitAddStaff() {
+  const name  = document.getElementById('sf-name').value.trim();
+  const role  = document.getElementById('sf-role').value;
+  const dept  = document.getElementById('sf-dept').value.trim() || 'General';
   const empId = document.getElementById('sf-emp').value.trim() || role[0]+'-'+Math.floor(100+Math.random()*900);
-  if (!name) { alert('Name required'); return; }
-  S.staff.push({ id:'S'+Date.now(), name, role, dept, empId, color:'#546E7A' });
+  const email = document.getElementById('sf-email').value.trim();
+  const pass  = document.getElementById('sf-pass').value.trim();
+  if (!name || !email || !pass) { alert('Name, email and password are required'); return; }
+
   closeModal();
-  showToast(`${name} added as ${role}`);
+
+  if (IS_LIVE) {
+    const res = await apiPost('/staff', { name, role, department: dept, emp_id: empId, email, password: pass });
+    if (res) {
+      S.staff.push({ id: String(res.id), name: res.name, role: res.role, dept: res.department||dept, empId: res.emp_id||empId, color:'#546E7A' });
+      showToast(`${name} added as ${role} ✓`, 'info');
+      showShareStaffModal(name, role, email, pass);
+    } else {
+      showToast('Failed to add staff — check server', 'error');
+      return;
+    }
+  } else {
+    S.staff.push({ id:'S'+Date.now(), name, role, dept, empId, color:'#546E7A' });
+    showToast(`${name} added as ${role}`);
+    showShareStaffModal(name, role, email, pass);
+  }
   save();
+  S._adminTab = 'staff';
+  renderStaffPage();
+}
+
+function showShareStaffModal(name, role, email, password) {
+  const url = 'https://nurselink-frontend.vercel.app';
+  const msg = `Hi ${name},\n\nYou have been added to NurseLink IPD as *${role}*.\n\n🔗 Login: ${url}\n📧 Email: ${email}\n🔑 Password: ${password}\n\nPlease login and change your password after first sign-in.`;
+
+  showModal(`<div class="modal" style="max-width:480px">
+    <div class="modal-header"><h2>✅ Staff Added — Share Credentials</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div style="background:var(--panel);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;margin-bottom:16px;font-family:var(--mono)">
+        <div><b>Name:</b> ${name}</div>
+        <div><b>Role:</b> ${role}</div>
+        <div><b>Email:</b> ${email}</div>
+        <div><b>Password:</b> ${password}</div>
+        <div><b>Login URL:</b> ${url}</div>
+      </div>
+      <div class="text-muted" style="font-size:12px">Share login credentials securely via WhatsApp or SMS</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-outline" style="border-color:var(--indigo);color:var(--indigo)" onclick="window.open('sms:?body='+encodeURIComponent(${JSON.stringify(msg)}))">💬 SMS</button>
+      <button class="btn btn-success" onclick="window.open('https://wa.me/?text='+encodeURIComponent(${JSON.stringify(msg)}))">📱 WhatsApp</button>
+    </div>
+  </div>`);
 }
 
 function renderBedsPage() {
@@ -5170,6 +5377,12 @@ function renderRegisterPage() {
       <button class="btn btn-outline" onclick="setNav('queue')">Cancel</button>
     </div>
   `;
+}
+
+function calcAdmitBMI() {
+  const h = parseFloat(document.getElementById('ad-height')?.value);
+  const w = parseFloat(document.getElementById('ad-weight')?.value);
+  if (h && w) document.getElementById('ad-bmi').value = (w / Math.pow(h/100, 2)).toFixed(1);
 }
 
 function calcBMI() {
