@@ -350,26 +350,29 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
 /* ── MOBILE ── */
 @media (max-width: 600px) {
   /* Topbar compact */
-  #topbar { padding: 0 12px; height: 52px; gap: 8px; }
-  #topbar .logo { font-size: 15px; }
+  #topbar { padding: 0 10px; height: 50px; gap: 6px; }
+  #topbar .logo { font-size: 14px; }
   #clock { display: none; }
   #refresh-btn { display: none !important; }
-  #demo-badge, #live-badge, #offline-badge { font-size: 9px; padding: 2px 6px; }
+  #demo-badge, #live-badge, #offline-badge { font-size: 9px; padding: 2px 5px; }
+  #role-switcher button { font-size: 11px; padding: 4px 8px; }
+  #notif-btn { font-size: 14px; padding: 4px 6px; }
 
-  /* Layout — full width, no sidebar */
-  #app { flex-direction: column; height: calc(100vh - 52px); }
-  #main { padding: 12px; padding-bottom: 72px; /* space for bottom nav */ }
+  /* Layout */
+  #app { flex-direction: column; height: calc(100vh - 50px); overflow: hidden; }
+  #main { padding: 10px; padding-bottom: 68px; overflow-y: auto; -webkit-overflow-scrolling: touch; height: 100%; }
 
   /* Bottom navigation bar */
   #mobile-bottom-nav {
     display: flex !important;
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    height: 60px;
+    height: 58px;
     background: var(--navy);
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255,255,255,0.08);
     z-index: 110;
     align-items: stretch;
+    padding-bottom: env(safe-area-inset-bottom);
   }
   #mobile-bottom-nav .mbn-item {
     flex: 1;
@@ -377,104 +380,111 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: rgba(255,255,255,0.5);
-    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    font-size: 9px;
     font-weight: 600;
     cursor: pointer;
     gap: 2px;
-    padding: 4px 2px;
+    padding: 4px 1px;
     border: none;
     background: none;
     font-family: var(--font);
-    transition: all 0.15s;
+    transition: color 0.15s;
     -webkit-tap-highlight-color: transparent;
+    min-width: 0;
   }
   #mobile-bottom-nav .mbn-item.active { color: var(--teal); }
-  #mobile-bottom-nav .mbn-item span:first-child { font-size: 18px; }
+  #mobile-bottom-nav .mbn-item span:first-child { font-size: 17px; line-height: 1; }
+  #mobile-bottom-nav .mbn-item span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
-  /* Slide-in sidebar drawer for mobile */
+  /* Slide-in sidebar drawer */
   #sidebar {
     display: block !important;
     position: fixed;
-    top: 52px; left: -260px;
-    width: 260px; height: calc(100vh - 52px);
+    top: 50px; left: -265px;
+    width: 265px; height: calc(100vh - 50px);
     z-index: 200;
-    transition: left 0.25s ease;
-    box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+    transition: left 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+    overflow-y: auto;
   }
   #sidebar.open { left: 0; }
   #sidebar-overlay {
     display: none;
     position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
+    inset: 0; top: 50px;
+    background: rgba(0,0,0,0.45);
     z-index: 199;
-    top: 52px;
   }
   #sidebar-overlay.show { display: block; }
 
-  /* Right panel hidden on mobile — alerts accessible via topbar bell */
   #right-panel { display: none !important; }
 
   /* Cards */
   .card { border-radius: 8px; }
-  .card-body { padding: 12px; }
-  .card-header { padding: 10px 12px; }
+  .card-body { padding: 10px; }
+  .card-header { padding: 9px 10px; }
+  .card-header h3 { font-size: 13px; }
 
-  /* Patient grid — single column */
-  .patient-grid { grid-template-columns: 1fr; gap: 10px; }
+  /* Section title */
+  .section-title { font-size: 16px; }
+  .section-sub { font-size: 12px; }
 
-  /* Vitals grid — 2 cols on mobile */
-  .vitals-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .vital-box { padding: 8px; }
-  .vital-box .vb-value { font-size: 18px; }
+  /* Patient grid */
+  .patient-grid { grid-template-columns: 1fr; gap: 8px; }
 
-  /* Tables — horizontal scroll */
+  /* Vitals grid */
+  .vitals-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .vital-box { padding: 7px; }
+  .vital-box .vb-value { font-size: 17px; }
+
+  /* Tables */
   .data-table { font-size: 11px; }
-  .data-table th, .data-table td { padding: 6px 8px; }
+  .data-table th, .data-table td { padding: 5px 6px; }
+  table { min-width: 0; }
+  .data-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  /* Modals — full screen on mobile */
-  .modal-overlay { padding: 0; align-items: flex-end; }
+  /* Modals — bottom sheet */
+  .modal-overlay { padding: 0; align-items: flex-end; background: rgba(0,0,0,0.6); }
   .modal {
     max-width: 100% !important;
     width: 100%;
-    max-height: 92vh;
+    max-height: 90vh;
     border-radius: 16px 16px 0 0;
+    overflow-y: auto;
   }
-
-  /* Section title */
-  .section-title { font-size: 17px; }
+  .modal-header { padding: 14px 14px 10px; }
+  .modal-body { padding: 12px 14px; }
+  .modal-footer { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+  .modal-footer .btn { flex: 1; min-width: 80px; font-size: 12px; justify-content: center; }
 
   /* Tabs — scrollable */
-  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; gap: 0; }
-  .tab { white-space: nowrap; padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; gap: 0; padding-bottom: 2px; }
+  .tab { white-space: nowrap; padding: 7px 10px; font-size: 12px; flex-shrink: 0; }
 
   /* Buttons */
-  .btn { padding: 8px 12px; font-size: 12px; }
-  .btn-sm { padding: 5px 8px; font-size: 11px; }
+  .btn { padding: 8px 10px; font-size: 12px; }
+  .btn-sm { padding: 5px 7px; font-size: 11px; }
 
-  /* KPI grid — wrap to 2 cols */
+  /* Grid overrides */
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .form-row, .form-row-3 { grid-template-columns: 1fr; }
+
+  /* Form inputs — prevent iOS zoom */
+  .form-control { padding: 10px 11px; font-size: 16px; }
+  select.form-control, textarea.form-control { font-size: 16px; }
+
+  /* KPI strip */
   .kpi-grid-mobile { grid-template-columns: repeat(2,1fr) !important; }
 
-  /* Alert feed shown as drawer sheet when bell tapped */
-  #notif-dropdown { width: 100%; border-radius: 0 0 10px 10px; }
-
-  /* Form improvements for touch */
-  .form-control { padding: 11px 12px; font-size: 16px; /* prevents iOS zoom */ }
-  select.form-control { font-size: 16px; }
-
-  /* IPD detail header — wrap */
-  .ipd-header-flex { flex-wrap: wrap; gap: 6px; }
-
-  /* Patient card actions — full width */
-  .patient-card-body .flex { flex-wrap: wrap; }
-
   /* Chat */
-  .chat-area { height: 220px; }
+  .chat-area { height: 200px; }
 
-  /* MAR rows */
-  .mar-row { flex-wrap: wrap; gap: 8px; }
-  .mar-actions { flex-wrap: wrap; }
+  /* IPD header */
+  .ipd-header-flex { flex-wrap: wrap; gap: 5px; }
+
+  /* Notification dropdown */
+  #notif-dropdown { width: calc(100vw - 20px); right: 10px; max-height: 70vh; overflow-y: auto; }
 }
 </style>
 </head>
@@ -589,7 +599,9 @@ async function apiPost(path, body) {
     if (!res.ok) {
       const err = await res.json().catch(()=>({error:res.statusText}));
       console.error(`[API POST ${path}] ${res.status}:`, err);
-      showToast(`Server error ${res.status}: ${err.error||err.message||'Unknown'}`, 'error');
+      if (!path.startsWith('/network')) {
+        showToast(`Server error ${res.status}: ${err.error||err.message||'Unknown'}`, 'error');
+      }
       return null;
     }
     return await res.json();
@@ -1208,6 +1220,7 @@ function renderSidebar() {
       { icon:'📄', label:'Discharge', view:'discharge' },
       { icon:'🔢', label:'OPD Queue', view:'queue' },
       { icon:'🩺', label:'Dr. Network', view:'network' },
+      { icon:'👤', label:'My Profile', view:'profile' },
     ],
     Nurse: [
       { icon:'🏥', label:'My Patients', view:'patients' },
@@ -1296,6 +1309,7 @@ function renderMain() {
     register: renderRegisterPage,
     queue: renderQueuePage,
     network: renderNetworkPage,
+    profile: renderProfilePage,
   };
   if (view === 'patientDetail') { renders.patientDetail(); return; }
   // Admin cannot access patient write views
@@ -5287,6 +5301,100 @@ function renderIndiaMap(filter) {
 }
 
 // ============================================================
+// DOCTOR PROFILE
+// ============================================================
+function renderProfilePage() {
+  const main = document.getElementById('main');
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+  const me = S.staff.find(s=>s.id===myId) || { name: getCurrentStaffName(), role:'Doctor', dept:'' };
+  const score = myId ? calcDoctorScore(myId) : 0;
+  const tier = getDoctorTier(score);
+  const profile = S._myProfile || {};
+
+  main.innerHTML = `
+    <div class="section-title mb-4">👤 My Profile</div>
+    <div class="card mb-4">
+      <div class="card-body" style="display:flex;align-items:center;gap:16px">
+        <div style="width:64px;height:64px;border-radius:50%;background:${tier.color};color:white;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0">${me.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+        <div>
+          <div style="font-size:18px;font-weight:800">${me.name}</div>
+          <div style="color:var(--text-muted);font-size:13px">${me.role} · ${me.dept||'—'}</div>
+          <div style="margin-top:4px"><span style="font-size:13px;font-weight:700;color:${tier.color}">${tier.icon} ${tier.label}</span> <span style="font-size:12px;color:var(--text-muted)">· ${score} pts</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><h3>Professional Details</h3></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" id="prof-name" value="${profile.name||me.name||''}"></div>
+          <div class="form-group"><label class="form-label">Designation</label><input class="form-control" id="prof-designation" value="${profile.designation||''}" placeholder="e.g. Senior Consultant Cardiologist"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Specialisation</label><input class="form-control" id="prof-specialisation" value="${profile.specialisation||''}" placeholder="e.g. Cardiology, Internal Medicine"></div>
+          <div class="form-group"><label class="form-label">Qualification</label><input class="form-control" id="prof-qualification" value="${profile.qualification||''}" placeholder="e.g. MBBS, MD, DM"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">MCI / NMC Reg. No.</label><input class="form-control" id="prof-regno" value="${profile.regno||''}" placeholder="Registration number"></div>
+          <div class="form-group"><label class="form-label">Years of Experience</label><input class="form-control" id="prof-experience" type="number" value="${profile.experience||''}" placeholder="Years"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Institution / Hospital</label><input class="form-control" id="prof-institution" value="${profile.institution||''}" placeholder="Current workplace"></div>
+        <div class="form-group"><label class="form-label">Address / City</label><input class="form-control" id="prof-city" value="${profile.city||''}" placeholder="City, State"></div>
+        <div class="form-group"><label class="form-label">Bio / About</label><textarea class="form-control" id="prof-bio" rows="3" placeholder="Brief professional summary...">${profile.bio||''}</textarea></div>
+        <div class="form-group"><label class="form-label">Languages Spoken</label><input class="form-control" id="prof-languages" value="${profile.languages||''}" placeholder="e.g. Hindi, English, Bengali"></div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><h3>Contact & Availability</h3></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Contact Phone</label><input class="form-control" id="prof-phone" value="${profile.phone||''}" placeholder="Professional contact number"></div>
+          <div class="form-group"><label class="form-label">Consultation Hours</label><input class="form-control" id="prof-hours" value="${profile.hours||''}" placeholder="e.g. Mon-Fri 9am-5pm"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Accepting New Patients</label>
+          <div class="flex gap-3 mt-1">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="prof-accepting" value="yes" ${(profile.accepting!=='no')?'checked':''}> Yes</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="prof-accepting" value="no" ${profile.accepting==='no'?'checked':''}> No</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <button class="btn btn-primary" onclick="saveProfile()">💾 Save Profile</button>
+    </div>
+  `;
+}
+
+function saveProfile() {
+  S._myProfile = {
+    name:          document.getElementById('prof-name')?.value.trim(),
+    designation:   document.getElementById('prof-designation')?.value.trim(),
+    specialisation:document.getElementById('prof-specialisation')?.value.trim(),
+    qualification: document.getElementById('prof-qualification')?.value.trim(),
+    regno:         document.getElementById('prof-regno')?.value.trim(),
+    experience:    document.getElementById('prof-experience')?.value.trim(),
+    institution:   document.getElementById('prof-institution')?.value.trim(),
+    city:          document.getElementById('prof-city')?.value.trim(),
+    bio:           document.getElementById('prof-bio')?.value.trim(),
+    languages:     document.getElementById('prof-languages')?.value.trim(),
+    phone:         document.getElementById('prof-phone')?.value.trim(),
+    hours:         document.getElementById('prof-hours')?.value.trim(),
+    accepting:     document.querySelector('input[name="prof-accepting"]:checked')?.value || 'yes',
+  };
+  // Update staff name if changed
+  if (S._myProfile.name) {
+    const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+    const me = S.staff.find(s=>s.id===myId);
+    if (me) me.name = S._myProfile.name;
+  }
+  showToast('Profile saved ✓');
+  save();
+}
+
+// ============================================================
 // DOCTOR NETWORK
 // ============================================================
 
@@ -5601,9 +5709,9 @@ function submitNetPost() {
   S._networkTab = 'feed';
 
   if (IS_LIVE) {
-    apiPost('/network/posts', { text, tag, case_label: localPost.caseLabel, case_history: caseHistory }).then(res => {
-      if (res) localPost.id = String(res.id);
-    });
+    apiPost('/network/posts', { text, tag, case_label: localPost.caseLabel, case_history: caseHistory })
+      .then(res => { if (res && res.id) localPost.id = String(res.id); })
+      .catch(() => {}); // silent — post already saved locally
   }
   save();
   renderNetworkPage();
@@ -6373,7 +6481,7 @@ function renderMobileBottomNav() {
   if (!nav) return;
 
   const navMap = {
-    Doctor:      [{icon:'📊',label:'Dash',view:'analytics'},{icon:'🏥',label:'Patients',view:'patients'},{icon:'➕',label:'New',view:'admit'},{icon:'⚡',label:'Alerts',view:'alerts'},{icon:'☰',label:'More',view:'__menu'}],
+    Doctor:      [{icon:'📊',label:'Dash',view:'analytics'},{icon:'🏥',label:'Patients',view:'patients'},{icon:'➕',label:'New',view:'admit'},{icon:'🩺',label:'Network',view:'network'},{icon:'👤',label:'Profile',view:'profile'},{icon:'☰',label:'More',view:'__menu'}],
     Nurse:       [{icon:'🏥',label:'Patients',view:'patients'},{icon:'📊',label:'Vitals',view:'vitals'},{icon:'💊',label:'MAR',view:'mar'},{icon:'⚡',label:'Alerts',view:'alerts'},{icon:'☰',label:'More',view:'__menu'}],
     Pharmacist:  [{icon:'💊',label:'Rx',view:'pharmacy'},{icon:'📦',label:'Inventory',view:'inventory'},{icon:'☰',label:'More',view:'__menu'}],
     'Lab Tech':  [{icon:'🔬',label:'Orders',view:'labtech'},{icon:'📋',label:'Results',view:'results'},{icon:'☰',label:'More',view:'__menu'}],
