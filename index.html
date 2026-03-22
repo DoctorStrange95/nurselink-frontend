@@ -860,13 +860,14 @@ function connectSocket() {
 
 async function loadPatientData(pid) {
   if (!IS_LIVE) return;
-  const [vitals, rx, labs, consult, nursing, chat] = await Promise.all([
+  const [vitals, rx, labs, consult, nursing, chat, vaccines] = await Promise.all([
     apiGet('/vitals/' + pid),
     apiGet('/prescriptions/' + pid),
     apiGet('/labs/' + pid),
     apiGet('/notes/consult/' + pid),
     apiGet('/notes/nursing/' + pid),
     apiGet('/chat/' + pid),
+    apiGet('/vaccinations/' + pid),
   ]);
   if (vitals) S.vitals[pid] = vitals.map(v=>({ id:String(v.id), time:new Date(v.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' '+new Date(v.recorded_at).toLocaleDateString('en-IN'), bpSys:v.bp_sys, bpDia:v.bp_dia, pulse:v.pulse, spo2:v.spo2, temp:v.temperature, rr:v.resp_rate, gcs:v.gcs, uo:v.urine_output, glucose:v.blood_glucose, drain:v.drain_output, pain:v.pain_score, notes:v.notes, nurse:v.recorded_by_name||'Staff' }));
   if (rx) S.prescriptions[pid] = rx.map(r=>({ id:String(r.id), drug:r.drug, dose:r.dose, route:r.route, freq:r.frequency, duration:r.duration, instructions:r.instructions, prescribedBy:r.prescribed_by_name||'Doctor', time:new Date(r.created_at).toLocaleString('en-IN'), status:r.status }));
@@ -874,6 +875,10 @@ async function loadPatientData(pid) {
   if (consult) S.consultNotes[pid] = consult.map(c=>({ id:String(c.id), time:new Date(c.created_at).toLocaleString('en-IN'), by:c.written_by_name||'Doctor', subjective:c.subjective, objective:c.objective, assessment:c.assessment, plan:c.plan }));
   if (nursing) S.nursingNotes[pid] = nursing.map(n=>({ id:String(n.id), time:new Date(n.created_at).toLocaleString('en-IN'), by:n.written_by_name||'Nurse', note:n.note }));
   if (chat) S.chat[pid] = chat.map(m=>({ from:m.sender_role, name:m.sender_name, msg:m.message, time:new Date(m.sent_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) }));
+  if (vaccines) {
+    if (!S.vaccinations) S.vaccinations = {};
+    S.vaccinations[pid] = vaccines.map(v=>({ id:String(v.id), name:v.name, dose:v.dose, doseNum:v.dose_number, route:v.route, date:v.date_administered?new Date(v.date_administered).toISOString().split('T')[0]:'', nextDate:v.next_due_date?new Date(v.next_due_date).toISOString().split('T')[0]:'', notes:v.notes, by:v.given_by_name||'Doctor', time:new Date(v.created_at).toLocaleString('en-IN') }));
+  }
   if (socket) socket.emit('join:patient', pid);
   renderAll();
 }
@@ -1018,6 +1023,7 @@ const INIT = {
   dischargeReady: {},
   bills: {},
   opdQueue: [],
+  vaccinations: {},
 };
 
 let S = JSON.parse(localStorage.getItem('NL_STATE_V3')) || JSON.parse(JSON.stringify(INIT));
@@ -1376,8 +1382,10 @@ function renderPatientCard(p) {
             ? `<button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();showPatientHistoryPDF('${p.id}')">📋 View History</button>
                <button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖 AI Summary</button>`
             : isOPD
-            ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>
-               <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖</button>`
+            ? (p.consulted || (S.prescriptions[p.id]||[]).length>0 || (S.consultNotes[p.id]||[]).length>0)
+              ? `<button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();showOPDRxPDF('${p.id}')">📄 View Prescription</button>`
+              : `<button class="btn btn-primary btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">📋 Consult →</button>
+                 <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showAISummary('${p.id}')">🤖</button>`
             : `<button class="btn btn-danger btn-sm" style="flex:1" onclick="event.stopPropagation();triggerSOS('${p.id}')">🚨 SOS</button>
                <button class="btn btn-outline btn-sm" style="flex:1" onclick="event.stopPropagation();openPatient('${p.id}')">View →</button>`
           }
@@ -1388,6 +1396,12 @@ function renderPatientCard(p) {
 }
 
 function openPatient(id) {
+  const p = S.patients.find(x=>x.id===id);
+  // If OPD and already consulted, show PDF directly
+  if (p && p.status==='OPD' && (p.consulted || (S.prescriptions[id]||[]).length>0 || (S.consultNotes[id]||[]).length>0)) {
+    loadPatientData(id).then(()=>showOPDRxPDF(id));
+    return;
+  }
   S.activePatientId = id;
   if (!S.activeTab[id]) S.activeTab[id] = 'overview';
   closeMobileSidebar();
@@ -1435,23 +1449,21 @@ function renderOPDConsultation(id) {
     </div>
 
     <div class="tabs">
-      ${['history','examine','prescribe','actions'].map(t=>`
-        <div class="tab ${tab===t?'active':''}" onclick="setTab('${id}','${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</div>
+      ${['history','consult','actions'].map(t=>`
+        <div class="tab ${(tab==='examine'||tab==='prescribe'||tab==='consult')?t==='consult'?'active':'':tab===t?'active':''}" onclick="setTab('${id}','${t==='consult'?'consult':t}')">${t==='consult'?'Examine & Prescribe':t.charAt(0).toUpperCase()+t.slice(1)}</div>
       `).join('')}
     </div>
 
     <div id="tab-content">
-      ${tab==='history' ? renderOPDHistoryTab(id,p) :
-        tab==='examine' ? renderOPDExamineTab(id,p) :
-        tab==='prescribe' ? renderOPDPrescribeTab(id,p) :
-        renderOPDActionsTab(id,p)}
+      ${(tab==='history') ? renderOPDHistoryTab(id,p) :
+        (tab==='actions') ? renderOPDActionsTab(id,p) :
+        renderOPDConsultTab(id,p)}
     </div>
   `;
 }
 
 function renderOPDHistoryTab(id, p) {
   const notes = S.consultNotes[id] || [];
-  // Find all visits for this patient by phone number
   const prevVisits = p.phone
     ? S.patients.filter(x => x.phone === p.phone && x.id !== id)
     : [];
@@ -1459,7 +1471,10 @@ function renderOPDHistoryTab(id, p) {
   return `
     <div class="flex items-center justify-between mb-3">
       <div class="section-sub" style="margin:0">Patient visit history</div>
-      <button class="btn btn-outline btn-sm" onclick="showAISummary('${id}')">🤖 AI Summary</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="showWriteHistoryModal('${id}')">✏️ Write History</button>
+        <button class="btn btn-outline btn-sm" onclick="showAISummary('${id}')">🤖 AI Summary</button>
+      </div>
     </div>
 
     ${prevVisits.length > 0 ? `
@@ -1483,38 +1498,80 @@ function renderOPDHistoryTab(id, p) {
     </div>` : ''}
 
     ${notes.length===0 && prevVisits.length===0
-      ? '<div class="card"><div class="card-body text-muted">No previous history found for this patient.</div></div>'
+      ? '<div class="card"><div class="card-body text-muted">No previous history found. Click ✏️ Write History to add.</div></div>'
       : ''}
 
     ${notes.map(n=>`
       <div class="card mb-3" style="border-left:3px solid var(--teal)">
         <div class="card-header"><h3>${n.time}</h3><span class="text-muted">${n.by}</span></div>
         <div class="card-body">
-          ${n.subjective?`<div class="mb-2"><div class="form-label">Subjective</div><div style="font-size:13px">${n.subjective}</div></div>`:''}
+          ${n.subjective?`<div class="mb-2"><div class="form-label">History / Complaints</div><div style="font-size:13px">${n.subjective}</div></div>`:''}
+          ${n.objective?`<div class="mb-2"><div class="form-label">Past Medical History</div><div style="font-size:13px">${n.objective}</div></div>`:''}
           ${n.assessment?`<div class="mb-2"><div class="form-label">Assessment</div><div style="font-size:13px;font-weight:600">${n.assessment}</div></div>`:''}
-          ${n.plan?`<div><div class="form-label">Plan</div><div style="font-size:13px">${n.plan}</div></div>`:''}
+          ${n.plan?`<div><div class="form-label">Plan / Notes</div><div style="font-size:13px">${n.plan}</div></div>`:''}
         </div>
       </div>
     `).join('')}
   `;
 }
 
-function renderOPDExamineTab(id, p) {
+function showWriteHistoryModal(id) {
+  const p = S.patients.find(x=>x.id===id);
+  showModal(`<div class="modal">
+    <div class="modal-header"><h2>✏️ Write History — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">History of Presenting Illness / Complaints</label>
+        <textarea class="form-control" id="hist-subj" rows="3" placeholder="e.g. Patient complaints of fever since 3 days, cough, cold..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Past Medical / Surgical / Family History</label>
+        <textarea class="form-control" id="hist-obj" rows="3" placeholder="e.g. K/c/o Diabetes on medication, no prior surgeries, father had HTN..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assessment / Impression</label>
+        <textarea class="form-control" id="hist-assess" rows="2" placeholder="e.g. Viral URTI, r/o Typhoid"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Plan / Notes</label>
+        <textarea class="form-control" id="hist-plan" rows="2" placeholder="e.g. CBC, CRP ordered. Start symptomatic treatment."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWrittenHistory('${id}')">Save History</button>
+    </div>
+  </div>`);
+}
+
+async function saveWrittenHistory(id) {
+  const subj = document.getElementById('hist-subj').value.trim();
+  const obj  = document.getElementById('hist-obj').value.trim();
+  const assess = document.getElementById('hist-assess').value.trim();
+  const plan = document.getElementById('hist-plan').value.trim();
+  if (!subj && !assess) { alert('Please enter at least the complaints or assessment.'); return; }
+  if (!S.consultNotes[id]) S.consultNotes[id] = [];
+  const note = { id:'C'+Date.now(), time:now(), by:getCurrentStaffName(), subjective:subj, objective:obj, assessment:assess, plan };
+  S.consultNotes[id].unshift(note);
+  closeModal();
+  if (IS_LIVE) {
+    const res = await apiPost('/notes/consult/' + id, { subjective:subj, objective:obj, assessment:assess, plan });
+    showToast(res ? 'History saved ✓' : 'Saved locally — server sync failed', res ? 'info' : 'warn');
+  } else { showToast('History saved'); }
+  save();
+}
+
+function renderOPDConsultTab(id, p) {
+  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
+  const vaccines = (S.vaccinations||{})[id]||[];
   return `
-    <div class="card">
-      <div class="card-header"><h3>Examination Findings</h3></div>
+    <!-- EXAMINE SECTION -->
+    <div class="card mb-3">
+      <div class="card-header"><h3>🩺 Examination</h3></div>
       <div class="card-body">
         <div class="form-group">
-          <label class="form-label">Chief Complaint</label>
-          <textarea class="form-control" id="exam-cc" rows="2" placeholder="Presenting complaint...">${p.chiefComplaint||''}</textarea>
-        </div>
-        <div class="form-group">
           <label class="form-label">Clinical Examination Notes</label>
-          <textarea class="form-control" id="exam-notes" rows="4" placeholder="On examination: BP, pulse, chest, abdomen findings..."></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Investigation Results (manual entry)</label>
-          <textarea class="form-control" id="exam-inv" rows="3" placeholder="e.g. Hb 12.5 g/dL, WBC 9800, Blood Sugar 142 mg/dL..."></textarea>
+          <textarea class="form-control" id="exam-notes" rows="3" placeholder="On examination: BP, pulse, chest, abdomen findings...">${p.examNotes||''}</textarea>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -1526,7 +1583,7 @@ function renderOPDExamineTab(id, p) {
             <input class="form-control" id="exam-icd" value="${p.icd||''}" placeholder="e.g. J06.9">
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Diagnosis Type</label>
           <div class="flex gap-2">
             ${['Working','Provisional','Final'].map(t=>`
@@ -1534,11 +1591,73 @@ function renderOPDExamineTab(id, p) {
             `).join('')}
           </div>
         </div>
-        <button class="btn btn-primary" onclick="saveExamination('${id}')">Save & Go to Prescribe →</button>
       </div>
+    </div>
+
+    <!-- PRESCRIBE SECTION -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3>💊 Prescription</h3>
+        <button class="btn btn-primary btn-sm" onclick="saveExamination('${id}');showAddMedModal('${id}')">+ Add Drug</button>
+      </div>
+      <div class="card-body" ${rxList.length===0?'':'style="padding:0"'}>
+        ${rxList.length===0 ? '<div class="text-muted">No drugs added yet.</div>' :
+          `<table class="data-table">
+            <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Freq</th><th>Duration</th><th></th></tr></thead>
+            <tbody>
+              ${rxList.map(r=>`<tr>
+                <td class="fw-600">${r.drug}</td>
+                <td class="mono">${r.dose}</td>
+                <td>${r.route}</td>
+                <td>${r.freq}</td>
+                <td>${r.duration}</td>
+                <td><button onclick="discontinueMed('${id}','${r.id}')" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`}
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h3>💉 Vaccinations</h3><button class="btn btn-outline btn-sm" onclick="showAddVaccineModal('${id}')">+ Add</button></div>
+      <div class="card-body" ${vaccines.length===0?'':'style="padding:0"'}>
+        ${vaccines.length===0 ? '<div class="text-muted">No vaccinations ordered.</div>' :
+          `<table class="data-table">
+            <thead><tr><th>Vaccine</th><th>Dose</th><th>No.</th><th>Route</th><th>Given</th><th>Next Due</th><th></th></tr></thead>
+            <tbody>
+              ${vaccines.map((v,i)=>`<tr>
+                <td class="fw-600">${v.name}</td><td class="mono">${v.dose}</td>
+                <td style="font-size:11px">${v.doseNum||'—'}</td><td>${v.route}</td>
+                <td style="font-size:11px">${v.date||'—'}</td>
+                <td style="font-size:11px;color:${v.nextDate?'var(--amber)':'var(--text-muted)'}">${v.nextDate||'—'}</td>
+                <td><button onclick="removeVaccine('${id}',${i})" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`}
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h3>🔬 Investigations</h3><button class="btn btn-outline btn-sm" onclick="showOrderLabModal('${id}')">+ Order</button></div>
+      <div class="card-body">
+        ${(S.labOrders[id]||[]).length===0 ? '<div class="text-muted">No investigations ordered.</div>' :
+          (S.labOrders[id]||[]).map(l=>`<div class="flex items-center justify-between mb-2">
+            <span style="font-size:13px">${l.test}</span>
+            <span class="badge ${l.priority==='STAT'?'badge-red':l.priority==='Urgent'?'badge-amber':'badge-teal'}">${l.priority}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div style="position:sticky;bottom:16px;z-index:10">
+      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="saveExamination('${id}');generateRx('${id}')">
+        📄 Generate Prescription (Rx)
+      </button>
     </div>
   `;
 }
+
+function renderOPDExamineTab(id, p) { return renderOPDConsultTab(id, p); }
+function renderOPDPrescribeTab(id, p) { return renderOPDConsultTab(id, p); }
 
 function setDiagType(type) {
   ['Working','Provisional','Final'].forEach(t=>{
@@ -1557,51 +1676,7 @@ function saveExamination(id) {
   p.diagType = window._diagType || p.diagType || 'Provisional';
   p.examNotes = document.getElementById('exam-notes')?.value || '';
   p.invResults = document.getElementById('exam-inv')?.value || '';
-  setTab(id, 'prescribe');
-}
-
-function renderOPDPrescribeTab(id, p) {
-  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
-  return `
-    <div class="card mb-3">
-      <div class="card-header">
-        <h3>💊 Prescription</h3>
-        <button class="btn btn-primary btn-sm" onclick="showAddMedModal('${id}')">+ Add Drug</button>
-      </div>
-      <div class="card-body" ${rxList.length===0?'':'style="padding:0"'}>
-        ${rxList.length===0 ? '<div class="text-muted">No drugs added yet. Click + Add Drug.</div>' :
-          `<table class="data-table">
-            <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Freq</th><th>Duration</th><th></th></tr></thead>
-            <tbody>
-              ${rxList.map(r=>`<tr>
-                <td class="fw-600">${r.drug}</td>
-                <td class="mono">${r.dose}</td>
-                <td>${r.route}</td>
-                <td>${r.freq}</td>
-                <td>${r.duration}</td>
-                <td><button onclick="discontinueMed('${id}','${r.id}')" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>`
-        }
-      </div>
-    </div>
-    <div class="card mb-3">
-      <div class="card-header"><h3>🔬 Investigations</h3><button class="btn btn-outline btn-sm" onclick="showOrderLabModal('${id}')">+ Order</button></div>
-      <div class="card-body">
-        ${(S.labOrders[id]||[]).length===0 ? '<div class="text-muted">No investigations ordered.</div>' :
-          (S.labOrders[id]||[]).map(l=>`<div class="flex items-center justify-between mb-2">
-            <span style="font-size:13px">${l.test}</span>
-            <span class="badge ${l.priority==='STAT'?'badge-red':l.priority==='Urgent'?'badge-amber':'badge-teal'}">${l.priority}</span>
-          </div>`).join('')}
-      </div>
-    </div>
-    <div style="position:sticky;bottom:16px;z-index:10">
-      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="generateRx('${id}')">
-        📄 Generate Prescription (Rx)
-      </button>
-    </div>
-  `;
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
 }
 
 function renderOPDActionsTab(id, p) {
@@ -1659,8 +1734,6 @@ function convertOPDtoIPD(id) {
     if (ageEl) ageEl.value = p.age;
     const ccEl = document.getElementById('ad-cc');
     if (ccEl) ccEl.value = p.chiefComplaint||'';
-    const diagEl = document.getElementById('ad-diag');
-    if (diagEl) diagEl.value = p.diagnosis||'';
     showToast('Pre-filled from OPD record — select bed to complete IPD admission');
   }, 200);
 }
@@ -1695,14 +1768,30 @@ function generateRx(id) {
   // Record consultation time
   p.lastConsultDuration = elapsed;
 
-  showModal(`<div class="modal" style="max-width:680px">
+  showModal(`<div class="modal" style="max-width:760px">
     <div class="modal-header">
       <h2>📄 Prescription Preview</h2>
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
-    <div class="modal-body" id="rx-printable" style="font-family:'DM Sans',sans-serif">
-      <!-- Doctor Header -->
-      <div style="border-bottom:2px solid var(--navy);padding-bottom:12px;margin-bottom:12px">
+    <div class="modal-body" style="display:flex;gap:16px;padding:16px">
+
+      <!-- TOGGLES -->
+      <div style="width:130px;flex-shrink:0">
+        <div style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;margin-bottom:8px">Show / Hide</div>
+        ${['header','patient','medications','vaccinations','investigations','notes'].map(s=>`
+          <div class="flex items-center justify-between mb-2">
+            <span style="font-size:12px">${s.charAt(0).toUpperCase()+s.slice(1)}</span>
+            <label class="toggle-switch">
+              <input type="checkbox" checked onchange="document.getElementById('grx-sec-${s}').style.display=this.checked?'block':'none'">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>`).join('')}
+      </div>
+
+      <!-- PRINTABLE -->
+      <div id="rx-printable" style="flex:1;font-family:'DM Sans',sans-serif;border:1px solid var(--border);border-radius:8px;padding:16px">
+
+      <div id="grx-sec-header" style="border-bottom:2px solid var(--navy);padding-bottom:12px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
             <div style="font-size:20px;font-weight:800;color:var(--navy)">${doc?.name||getCurrentStaffName()}</div>
@@ -1715,8 +1804,7 @@ function generateRx(id) {
           </div>
         </div>
       </div>
-      <!-- Patient Block -->
-      <div style="background:var(--panel);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+      <div id="grx-sec-patient" style="background:var(--panel);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
         <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Patient</div><div class="fw-600">${p.name}</div></div>
         <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">Age/Sex</div><div>${p.age}Y / ${p.gender==='M'?'M':'F'}</div></div>
         <div><div style="color:var(--text-muted);font-size:10px;text-transform:uppercase">UHID</div><div style="font-family:var(--mono)">${p.ehrId}</div></div>
@@ -1725,7 +1813,7 @@ function generateRx(id) {
         ${p.allergies&&p.allergies!=='None Known'?`<div style="grid-column:1/-1;color:var(--red)"><b>⚠ Allergy:</b> ${p.allergies}</div>`:''}
       </div>
       <!-- Drugs Table -->
-      <div style="margin-bottom:14px">
+      <div id="grx-sec-medications" style="margin-bottom:14px">
         ${rxList.length===0 ? '<div style="color:var(--text-muted);font-size:13px;font-style:italic">No medications prescribed.</div>' :
         `<table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:1.5px solid var(--border)">
@@ -1748,11 +1836,28 @@ function generateRx(id) {
           </tbody>
         </table>`}
       </div>
-      ${(S.labOrders[id]||[]).length>0?`
-      <div style="margin-bottom:14px">
+      <div id="grx-sec-investigations" style="margin-bottom:14px;${(S.labOrders[id]||[]).length===0?'display:none':''}">
         <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:6px">Investigations Ordered</div>
         <div>${(S.labOrders[id]||[]).map(l=>`<span style="display:inline-block;background:var(--panel);border-radius:4px;padding:2px 8px;font-size:12px;margin:2px">${l.test} [${l.priority}]</span>`).join('')}</div>
-      </div>`:''}
+      </div>
+      <div id="grx-sec-vaccinations" style="margin-bottom:14px;${(S.vaccinations?.[id]||[]).length===0?'display:none':''}">
+        <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:6px">Vaccinations</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:4px 6px;text-align:left;color:var(--text-muted)">Vaccine</th>
+            <th style="padding:4px 6px;text-align:left;color:var(--text-muted)">Dose</th>
+            <th style="padding:4px 6px;text-align:left;color:var(--text-muted)">No.</th>
+            <th style="padding:4px 6px;text-align:left;color:var(--text-muted)">Route</th>
+          </tr></thead>
+          <tbody>${(S.vaccinations?.[id]||[]).map(v=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:5px 6px;font-weight:600">${v.name}</td>
+            <td style="padding:5px 6px">${v.dose}</td>
+            <td style="padding:5px 6px;font-size:11px">${v.doseNum||'—'}</td>
+            <td style="padding:5px 6px">${v.route}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div id="grx-sec-notes" style="display:none"></div>
       <!-- Signature -->
       <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:11px;color:var(--text-muted)">Consultation time: ${elapsed}min<br>Generated: ${now()}</div>
@@ -1761,7 +1866,8 @@ function generateRx(id) {
           <div style="font-size:10px;color:var(--text-muted)">Signature</div>
         </div>
       </div>
-    </div>
+      </div><!-- end printable -->
+    </div><!-- end modal-body flex -->
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
       <button class="btn btn-outline" onclick="window.print()">🖨 Print</button>
@@ -1814,10 +1920,129 @@ function downloadRxPDF(id) {
   win.document.close();
 }
 
+function showOPDRxPDF(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
+  const doc = S.staff.find(s=>s.id===p.doctorId) || S.staff.find(s=>s.role==='Doctor');
+  const rxList = (S.prescriptions[pid]||[]).filter(r=>r.status==='active');
+  const labs = S.labOrders[pid]||[];
+  const notes = S.consultNotes[pid]||[];
+
+  showModal(`<div class="modal" style="max-width:640px">
+    <div class="modal-header" style="position:sticky;top:0;background:white;z-index:10">
+      <h2>📄 OPD Prescription — ${p.name}</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" onclick="printOPDRx()">🖨 Print / PDF</button>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:20px;background:#FAFAFA">
+      <div id="opd-rx-printable" style="border:1px solid var(--border);border-radius:8px;padding:20px;font-family:'DM Sans',sans-serif;font-size:13px;background:white">
+
+        <div style="border-bottom:2px solid #0A1628;padding-bottom:12px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:18px;font-weight:800;color:#0A1628">${doc?.name||'Doctor'}</div>
+              <div style="font-size:11px;color:#64748B">${doc?.dept||'General Medicine'} | Reg: ${doc?.empId||'—'}</div>
+              <div style="font-size:11px;color:#64748B">NurseLink Clinic | ${now()}</div>
+            </div>
+            <div style="font-size:28px;font-weight:900;color:#00B4A6">℞</div>
+          </div>
+        </div>
+
+        <div style="background:#F0F4F8;border-radius:6px;padding:10px 12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:12px">
+          <div><div style="color:#64748B;font-size:10px;text-transform:uppercase">Patient</div><div style="font-weight:700">${p.name}</div></div>
+          <div><div style="color:#64748B;font-size:10px;text-transform:uppercase">Age/Sex</div><div>${p.age}Y / ${p.gender==='M'?'M':'F'}</div></div>
+          <div><div style="color:#64748B;font-size:10px;text-transform:uppercase">UHID</div><div style="font-family:monospace">${p.ehrId}</div></div>
+          ${p.phone?`<div><div style="color:#64748B;font-size:10px;text-transform:uppercase">Phone</div><div>${p.phone}</div></div>`:''}
+          ${p.allergies&&p.allergies!=='None Known'?`<div style="grid-column:1/-1;color:#C62828;font-weight:700">⚠ Allergy: ${p.allergies}</div>`:''}
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;margin-bottom:4px">Diagnosis</div>
+          <div style="font-weight:700">${p.diagnosis||'—'} ${p.icd?`<span style="font-size:11px;color:#64748B;font-family:monospace">(${p.icd})</span>`:''}</div>
+          ${p.chiefComplaint?`<div style="font-size:12px;color:#64748B;margin-top:2px">${p.chiefComplaint}</div>`:''}
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;margin-bottom:6px">Medications</div>
+          ${rxList.length===0
+            ? '<div style="color:#64748B;font-style:italic">No medications prescribed.</div>'
+            : `<table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead><tr style="border-bottom:1.5px solid #CBD5E1">
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">#</th>
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">DRUG</th>
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">DOSE</th>
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">ROUTE</th>
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">FREQ</th>
+                  <th style="text-align:left;padding:4px 6px;font-size:10px;color:#64748B">DURATION</th>
+                </tr></thead>
+                <tbody>
+                  ${rxList.map((r,i)=>`<tr style="border-bottom:1px solid #F0F4F8">
+                    <td style="padding:6px">${i+1}</td>
+                    <td style="padding:6px;font-weight:700">${r.drug}</td>
+                    <td style="padding:6px;font-family:monospace">${r.dose}</td>
+                    <td style="padding:6px">${r.route}</td>
+                    <td style="padding:6px">${r.freq}</td>
+                    <td style="padding:6px">${r.duration}</td>
+                  </tr>${r.instructions?`<tr><td></td><td colspan="5" style="padding:2px 6px 6px;font-size:11px;color:#F57C00">⚠ ${r.instructions}</td></tr>`:''}`).join('')}
+                </tbody>
+              </table>`}
+        </div>
+
+        ${(S.vaccinations?.[pid]||[]).length>0?`
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;margin-bottom:6px">Vaccinations</div>
+          <div>${(S.vaccinations[pid]||[]).map(v=>`<span style="display:inline-block;background:#F0F4F8;border-radius:4px;padding:2px 8px;font-size:12px;margin:2px">${v.name} ${v.dose} (${v.doseNum||''})</span>`).join('')}</div>
+        </div>`:''}
+
+        ${labs.length>0?`
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;margin-bottom:6px">Investigations</div>
+          <div>${labs.map(l=>`<span style="display:inline-block;background:#F0F4F8;border-radius:4px;padding:2px 8px;font-size:12px;margin:2px">${l.test} [${l.priority}]</span>`).join('')}</div>
+        </div>`:''}
+
+        ${notes.length>0?`
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;margin-bottom:4px">Notes</div>
+          ${notes.slice(0,1).map(n=>`<div style="font-size:12px">${n.assessment||''} ${n.plan?'· '+n.plan:''}</div>`).join('')}
+        </div>`:''}
+
+        <div style="display:flex;justify-content:flex-end;margin-top:24px;padding-top:12px;border-top:1px solid #CBD5E1">
+          <div style="text-align:center">
+            <div style="border-top:1.5px solid #0A1628;padding-top:6px;min-width:130px;font-size:12px">${doc?.name||'Doctor'}</div>
+            <div style="font-size:10px;color:#64748B">Signature</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-success" onclick="shareRxWhatsApp('${pid}')">📱 WhatsApp</button>
+      <button class="btn btn-outline" style="border-color:var(--indigo);color:var(--indigo)" onclick="shareRxSMS('${pid}')">💬 SMS</button>
+      <button class="btn btn-primary" onclick="printOPDRx()">🖨 Print / PDF</button>
+    </div>
+  </div>`);
+}
+
+function printOPDRx() {
+  const content = document.getElementById('opd-rx-printable');
+  if (!content) return;
+  const win = window.open('', '_blank');
+  const html = '<!DOCTYPE html><html><head>'
+    + '<meta charset="UTF-8"><title>Prescription</title>'
+    + '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">'
+    + '<style>body{font-family:"DM Sans",sans-serif;padding:32px;max-width:680px;margin:0 auto;color:#1A2332}table{width:100%;border-collapse:collapse}th,td{padding:5px 6px;text-align:left}@media print{body{padding:0}@page{margin:1.5cm}}</style>'
+    + '</head><body>' + content.innerHTML
+    + '<script>window.onload=function(){window.print();}<\/script></body></html>';
+  win.document.write(html);
+  win.document.close();
+}
+
 function finaliseConsult(id) {
   const p = S.patients.find(x=>x.id===id);
   if (!p) return;
-  // Mark OPD queue as done
+  p.consulted = true; // marks as consulted
   if (S.opdQueue) {
     const q = S.opdQueue.find(x=>x.pid===id);
     if (q) q.status = 'Done';
@@ -2006,9 +2231,7 @@ function renderOverviewTab(id, p) {
     <div class="card mt-4">
       <div class="card-header"><h3>Quick Actions</h3></div>
       <div class="card-body flex gap-3" style="flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="showAddConsultModal('${id}')">📝 Consult Note</button>
-        <button class="btn btn-primary" onclick="showAddMedModal('${id}')">💊 Add Medicine</button>
-        <button class="btn btn-primary" onclick="showOrderLabModal('${id}')">🔬 Order Investigation</button>
+        <button class="btn btn-primary" onclick="showDoctorOrderModal('${id}')">📋 Consult + Prescribe + Investigate</button>
         <button class="btn btn-primary" onclick="showRecordVitalsModal('${id}')">📊 Record Vitals</button>
         <button class="btn btn-outline" onclick="setTab('${id}','chat')">💬 Chat with Nurse</button>
         <button class="btn btn-outline" onclick="showAssignDoctorModal('${id}')">👨‍⚕️ Assign Doctor</button>
@@ -2274,6 +2497,127 @@ function renderChatTab(id, p) {
 // ============================================================
 // MODALS
 // ============================================================
+function showDoctorOrderModal(patientId) {
+  const p = S.patients.find(x=>x.id===patientId);
+  window._rxDrugs = [{}];
+  showModal(`<div class="modal" style="max-width:720px">
+    <div class="modal-header"><h2>📋 Doctor Orders — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      ${p.allergies !== 'None Known' ? `<div class="alert-item warning mb-3"><div class="al-title">⚠ Allergy</div><div class="al-meta">${p.allergies}</div></div>` : ''}
+
+      <!-- CONSULT NOTE -->
+      <div style="font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📝 Consultation Note</div>
+      <div class="form-group">
+        <label class="form-label">Subjective (Complaints)</label>
+        <textarea class="form-control" id="co-subj" rows="2" placeholder="Patient reports..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Assessment</label>
+          <input class="form-control" id="co-assess" placeholder="Diagnosis / Impression">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Plan</label>
+          <input class="form-control" id="co-plan" placeholder="Management plan">
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- MEDICINES -->
+      <div style="font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">💊 Prescriptions</div>
+      <div id="rx-rows"></div>
+      <button class="btn btn-outline btn-sm" onclick="addRxRow()">+ Add Drug</button>
+
+      <hr class="divider">
+
+      <!-- INVESTIGATIONS -->
+      <div style="font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🔬 Investigations</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        ${['CBC','RFT','LFT','Blood Sugar','Urine R/M','ECG','X-Ray Chest','USG Abdomen','Blood Culture','Urine Culture','HbA1c','Lipid Profile'].map(t => {
+          const key = t.replace(/\s/g,'_');
+          return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="lab-${key}" value="${t}">
+            <span>${t}</span>
+            <select id="pri-${key}" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;margin-left:auto">
+              <option>Routine</option><option>Urgent</option><option>STAT</option>
+            </select>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="form-group mt-3">
+        <label class="form-label">Other Investigation (free text)</label>
+        <input class="form-control" id="lab-other" placeholder="e.g. CT Head STAT, MRI Spine">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitDoctorOrder('${patientId}')">✔ Save All Orders</button>
+    </div>
+  </div>`);
+  renderRxRows();
+}
+
+async function submitDoctorOrder(pid) {
+  const subj   = document.getElementById('co-subj')?.value.trim();
+  const assess = document.getElementById('co-assess')?.value.trim();
+  const plan   = document.getElementById('co-plan')?.value.trim();
+
+  // Read drug rows
+  window._rxDrugs.forEach((d, i) => {
+    d.drug  = document.getElementById('rx-drug-'+i)?.value.trim();
+    d.dose  = (document.getElementById('rx-dose-'+i)?.value.trim()||'') + (document.getElementById('rx-unit-'+i)?.value||'');
+    d.route = document.getElementById('rx-route-'+i)?.value || 'Oral';
+    d.freq  = document.getElementById('rx-freq-'+i)?.value || 'OD';
+    d.dur   = document.getElementById('rx-dur-'+i)?.value.trim() || 'Till review';
+    d.inst  = document.getElementById('rx-inst-'+i)?.value.trim() || '';
+  });
+  const validRx = window._rxDrugs.filter(d => d.drug && d.dose);
+
+  // Read lab checkboxes
+  const checkedLabs = [];
+  document.querySelectorAll('#modal-container input[type=checkbox]:checked').forEach(cb => {
+    const key = cb.value.replace(/\s/g,'_');
+    checkedLabs.push({ test: cb.value, priority: document.getElementById('pri-'+key)?.value || 'Routine' });
+  });
+  const otherLab = document.getElementById('lab-other')?.value.trim();
+  if (otherLab) checkedLabs.push({ test: otherLab, priority: 'Routine' });
+
+  closeModal();
+
+  // Save consult note
+  if (subj || assess) {
+    if (!S.consultNotes[pid]) S.consultNotes[pid] = [];
+    const note = { id:'C'+Date.now(), time:now(), by:getCurrentStaffName(), subjective:subj, objective:'', assessment:assess, plan };
+    S.consultNotes[pid].unshift(note);
+    if (IS_LIVE) apiPost('/notes/consult/' + pid, { subjective:subj, objective:'', assessment:assess, plan });
+  }
+
+  // Save prescriptions
+  if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
+  for (const d of validRx) {
+    const rx = { id:'RX'+Date.now()+Math.random(), drug:d.drug, dose:d.dose, route:d.route, freq:d.freq, duration:d.dur, instructions:d.inst, prescribedBy:getCurrentStaffName(), time:now(), status:'active' };
+    S.prescriptions[pid].unshift(rx);
+    if (IS_LIVE) apiPost('/prescriptions/' + pid, { drug:d.drug, dose:d.dose, route:d.route, frequency:d.freq, duration:d.dur, instructions:d.inst });
+  }
+
+  // Save labs
+  if (!S.labOrders[pid]) S.labOrders[pid] = [];
+  for (const l of checkedLabs) {
+    S.labOrders[pid].unshift({ id:'L'+Date.now()+Math.random(), test:l.test, category:'', priority:l.priority, status:'Pending', result:'', resultStatus:'', orderedBy:getCurrentStaffName(), time:now() });
+  }
+  if (checkedLabs.length > 0 && IS_LIVE) {
+    apiPost('/labs/' + pid, { tests: checkedLabs.map(l=>({ test_name:l.test, category:'', priority:l.priority })) });
+  }
+
+  const parts = [];
+  if (subj || assess) parts.push('note');
+  if (validRx.length) parts.push(validRx.length+' drug'+(validRx.length>1?'s':''));
+  if (checkedLabs.length) parts.push(checkedLabs.length+' investigation'+(checkedLabs.length>1?'s':''));
+  showToast('Saved: ' + (parts.join(', ') || 'nothing entered'));
+  save();
+}
+
 function showAddConsultModal(patientId) {
   showModal(`<div class="modal">
     <div class="modal-header"><h2>📝 Add Consultation Note</h2><button class="modal-close" onclick="closeModal()">×</button></div>
@@ -2324,71 +2668,111 @@ async function submitConsult(pid) {
 
 function showAddMedModal(patientId) {
   const p = S.patients.find(x=>x.id===patientId);
-  showModal(`<div class="modal">
+  window._rxDrugs = [{}]; // start with one empty row
+  showModal(`<div class="modal" style="max-width:700px">
     <div class="modal-header"><h2>💊 Add Prescription — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="modal-body">
-      ${p.allergies !== 'None Known' ? `<div class="alert-item warning mb-4"><div class="al-title">⚠ Allergy Alert</div><div class="al-meta">${p.allergies}</div></div>` : ''}
+      ${p.allergies !== 'None Known' ? `<div class="alert-item warning mb-3"><div class="al-title">⚠ Allergy Alert</div><div class="al-meta">${p.allergies}</div></div>` : ''}
+      <div id="rx-rows"></div>
+      <button class="btn btn-outline btn-sm mt-2" onclick="addRxRow()">+ Add Another Drug</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMed('${patientId}')">Save All to Prescription</button>
+    </div>
+  </div>`);
+  renderRxRows();
+}
+
+function renderRxRows() {
+  const container = document.getElementById('rx-rows');
+  if (!container) return;
+  container.innerHTML = window._rxDrugs.map((d, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;position:relative">
+      ${window._rxDrugs.length > 1 ? `<button onclick="removeRxRow(${i})" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--red);cursor:pointer;font-size:16px">×</button>` : ''}
+      <div style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;margin-bottom:8px">Drug ${i+1}</div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Drug Name *</label>
-          <input class="form-control" id="rx-drug" placeholder="e.g. Tab. Metoprolol">
+          <input class="form-control" id="rx-drug-${i}" placeholder="e.g. Tab. Amoxicillin" value="${d.drug||''}"
+            oninput="window._rxDrugs[${i}].drug=this.value">
         </div>
         <div class="form-group">
-          <label class="form-label">Dose *</label>
-          <input class="form-control" id="rx-dose" placeholder="e.g. 25mg">
+          <label class="form-label">Dose / Strength *</label>
+          <div style="display:flex;gap:6px">
+            <input class="form-control" id="rx-dose-${i}" placeholder="e.g. 500" value="${d.dose||''}" style="flex:1"
+              oninput="window._rxDrugs[${i}].dose=this.value">
+            <select class="form-control" style="width:90px" id="rx-unit-${i}"
+              onchange="window._rxDrugs[${i}].unit=this.value">
+              ${['mg','ml','mcg','g','IU','%','mEq'].map(u=>`<option ${(d.unit||'mg')===u?'selected':''}>${u}</option>`).join('')}
+            </select>
+          </div>
         </div>
       </div>
       <div class="form-row-3">
         <div class="form-group">
           <label class="form-label">Route *</label>
-          <select class="form-control" id="rx-route">
-            <option>Oral</option><option>IV</option><option>IM</option><option>SC</option>
-            <option>SL</option><option>Topical</option><option>Inhalation</option><option>Rectal</option>
+          <select class="form-control" id="rx-route-${i}" onchange="window._rxDrugs[${i}].route=this.value">
+            ${['Oral','IV','IM','SC','SL','Topical','Inhalation','Rectal','Nasal','Sublingual'].map(r=>`<option ${(d.route||'Oral')===r?'selected':''}>${r}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Frequency *</label>
-          <select class="form-control" id="rx-freq">
-            <option>OD</option><option>BD</option><option>TDS</option><option>QID</option>
-            <option>Q4H</option><option>Q6H</option><option>Q8H</option><option>SOS</option>
-            <option>Stat</option><option>Hourly</option>
+          <select class="form-control" id="rx-freq-${i}" onchange="window._rxDrugs[${i}].freq=this.value">
+            ${['OD','BD','TDS','QID','Q4H','Q6H','Q8H','SOS','Stat','Hourly'].map(f=>`<option ${(d.freq||'OD')===f?'selected':''}>${f}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Duration</label>
-          <input class="form-control" id="rx-dur" placeholder="e.g. 5 days">
+          <input class="form-control" id="rx-dur-${i}" placeholder="e.g. 5 days" value="${d.dur||''}"
+            oninput="window._rxDrugs[${i}].dur=this.value">
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Special Instructions</label>
-        <input class="form-control" id="rx-inst" placeholder="e.g. With food, avoid in renal failure">
+        <input class="form-control" id="rx-inst-${i}" placeholder="e.g. With food, after meals" value="${d.inst||''}"
+          oninput="window._rxDrugs[${i}].inst=this.value">
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitMed('${patientId}')">Add to Prescription</button>
-    </div>
-  </div>`);
+  `).join('');
+}
+
+function addRxRow() {
+  window._rxDrugs.push({});
+  renderRxRows();
+}
+
+function removeRxRow(i) {
+  window._rxDrugs.splice(i, 1);
+  renderRxRows();
 }
 
 async function submitMed(pid) {
-  const drug = document.getElementById('rx-drug').value.trim();
-  const dose = document.getElementById('rx-dose').value.trim();
-  const route = document.getElementById('rx-route').value;
-  const freq = document.getElementById('rx-freq').value;
-  const dur = document.getElementById('rx-dur').value.trim() || 'Till review';
-  const inst = document.getElementById('rx-inst').value.trim();
-  if (!drug || !dose) { alert('Drug name and dose required.'); return; }
+  // Read current values from DOM
+  window._rxDrugs.forEach((d, i) => {
+    d.drug  = document.getElementById('rx-drug-'+i)?.value.trim();
+    d.dose  = (document.getElementById('rx-dose-'+i)?.value.trim() || '') + (document.getElementById('rx-unit-'+i)?.value || '');
+    d.route = document.getElementById('rx-route-'+i)?.value || 'Oral';
+    d.freq  = document.getElementById('rx-freq-'+i)?.value || 'OD';
+    d.dur   = document.getElementById('rx-dur-'+i)?.value.trim() || 'Till review';
+    d.inst  = document.getElementById('rx-inst-'+i)?.value.trim() || '';
+  });
+
+  const valid = window._rxDrugs.filter(d => d.drug && d.dose);
+  if (valid.length === 0) { alert('At least one drug with name and dose is required.'); return; }
+
   if (!S.prescriptions[pid]) S.prescriptions[pid] = [];
-  const rx = { id:'RX'+Date.now(), drug, dose, route, freq, duration:dur, instructions:inst, prescribedBy:getCurrentStaffName(), time:now(), status:'active' };
-  S.prescriptions[pid].unshift(rx);
-  S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'New Prescription', body:`${S.patients.find(p=>p.id===pid)?.name} — ${drug} ${dose}`, time:ts(), read:false });
   closeModal();
 
-  if (IS_LIVE) {
-    const res = await apiPost('/prescriptions/' + pid, { drug, dose, route, frequency:freq, duration:dur, instructions:inst });
-    showToast(res ? 'Prescription saved & sent to Pharmacy ✓' : 'Saved locally — server sync failed', res ? 'info' : 'warn');
-  } else { showToast('Prescription added & sent to Pharmacy'); }
+  for (const d of valid) {
+    const rx = { id:'RX'+Date.now()+Math.random(), drug:d.drug, dose:d.dose, route:d.route, freq:d.freq, duration:d.dur, instructions:d.inst, prescribedBy:getCurrentStaffName(), time:now(), status:'active' };
+    S.prescriptions[pid].unshift(rx);
+    S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'New Prescription', body:`${S.patients.find(p=>p.id===pid)?.name} — ${d.drug} ${d.dose}`, time:ts(), read:false });
+    if (IS_LIVE) {
+      apiPost('/prescriptions/' + pid, { drug:d.drug, dose:d.dose, route:d.route, frequency:d.freq, duration:d.dur, instructions:d.inst });
+    }
+  }
+  showToast(`${valid.length} drug${valid.length>1?'s':''} added to prescription`);
   save();
 }
 
@@ -2402,6 +2786,126 @@ async function discontinueMed(pid, rxId) {
   showToast(`${rx.drug} discontinued`);
   if (IS_LIVE) await apiPatch('/prescriptions/' + rxId + '/discontinue', {});
   save();
+}
+
+function showAddVaccineModal(pid) {
+  const p = S.patients.find(x=>x.id===pid);
+  const commonVaccines = ['BCG','OPV','Hepatitis B','DPT','MMR','Varicella','Typhoid','Hepatitis A','Meningococcal','HPV','Influenza','Pneumococcal','COVID-19 Booster','Rabies','Tetanus (TT)'];
+  window._vacRows = [{}];
+  showModal(`<div class="modal" style="max-width:680px">
+    <div class="modal-header"><h2>💉 Add Vaccination — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <datalist id="vac-list">${commonVaccines.map(v=>`<option value="${v}">`).join('')}</datalist>
+      <div id="vac-rows"></div>
+      <button class="btn btn-outline btn-sm mt-2" onclick="addVacRow()">+ Add Another Vaccine</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitVaccine('${pid}')">Save Vaccinations</button>
+    </div>
+  </div>`);
+  renderVacRows();
+}
+
+function renderVacRows() {
+  const container = document.getElementById('vac-rows');
+  if (!container) return;
+  container.innerHTML = window._vacRows.map((v, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;position:relative">
+      ${window._vacRows.length > 1 ? `<button onclick="removeVacRow(${i})" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--red);cursor:pointer;font-size:16px">×</button>` : ''}
+      <div style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;margin-bottom:8px">Vaccine ${i+1}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Vaccine Name *</label>
+          <input class="form-control" id="vac-name-${i}" list="vac-list" placeholder="e.g. MMR" value="${v.name||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dose Amount *</label>
+          <div style="display:flex;gap:6px">
+            <input class="form-control" id="vac-dose-${i}" placeholder="e.g. 0.5" value="${v.dose||''}" style="flex:1">
+            <select class="form-control" style="width:70px" id="vac-unit-${i}">
+              ${['ml','mg','IU'].map(u=>`<option ${(v.unit||'ml')===u?'selected':''}>${u}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Dose Number</label>
+          <select class="form-control" id="vac-dosenum-${i}">
+            ${['1st dose','2nd dose','3rd dose','4th dose','Booster','Single dose'].map(d=>`<option ${(v.doseNum||'1st dose')===d?'selected':''}>${d}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Route</label>
+          <select class="form-control" id="vac-route-${i}">
+            ${['IM','SC','Oral','ID'].map(r=>`<option ${(v.route||'IM')===r?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date Administered</label>
+          <input class="form-control" id="vac-date-${i}" type="date" value="${v.date||new Date().toISOString().split('T')[0]}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Next Due Date</label>
+          <input class="form-control" id="vac-nextdate-${i}" type="date" value="${v.nextDate||''}">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Notes (site, batch no., etc.)</label>
+        <input class="form-control" id="vac-notes-${i}" placeholder="e.g. Left deltoid, Batch: AX2024" value="${v.notes||''}">
+      </div>
+    </div>
+  `).join('');
+}
+
+function addVacRow() { window._vacRows.push({}); renderVacRows(); }
+function removeVacRow(i) { window._vacRows.splice(i,1); renderVacRows(); }
+
+function submitVaccine(pid) {
+  const rows = window._vacRows.map((_, i) => ({
+    name:     document.getElementById('vac-name-'+i)?.value.trim(),
+    dose:     (document.getElementById('vac-dose-'+i)?.value.trim()||'') + (document.getElementById('vac-unit-'+i)?.value||'ml'),
+    doseNum:  document.getElementById('vac-dosenum-'+i)?.value,
+    route:    document.getElementById('vac-route-'+i)?.value,
+    date:     document.getElementById('vac-date-'+i)?.value,
+    nextDate: document.getElementById('vac-nextdate-'+i)?.value,
+    notes:    document.getElementById('vac-notes-'+i)?.value.trim(),
+    by:       getCurrentStaffName(),
+    time:     now()
+  })).filter(r => r.name && r.dose);
+
+  if (rows.length === 0) { alert('Add at least one vaccine with name and dose.'); return; }
+  if (!S.vaccinations) S.vaccinations = {};
+  if (!S.vaccinations[pid]) S.vaccinations[pid] = [];
+  rows.forEach(v => S.vaccinations[pid].push(v));
+
+  const p = S.patients.find(x=>x.id===pid);
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'Vaccination Order', body:`${p?.name} — ${rows.map(r=>r.name).join(', ')}`, time:ts(), read:false });
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Pharmacist', title:'Vaccination Order', body:`${p?.name} — ${rows.map(r=>r.name).join(', ')}`, time:ts(), read:false });
+  closeModal();
+
+  if (IS_LIVE) {
+    rows.forEach(v => {
+      apiPost('/vaccinations/' + pid, {
+        name: v.name, dose: v.dose, dose_number: v.doseNum,
+        route: v.route, date_administered: v.date || null,
+        next_due_date: v.nextDate || null, notes: v.notes
+      });
+    });
+  }
+
+  showToast(`${rows.length} vaccination${rows.length>1?'s':''} added`);
+  save();
+}
+
+function removeVaccine(pid, idx) {
+  if (S.vaccinations?.[pid]) {
+    S.vaccinations[pid].splice(idx, 1);
+    save();
+  }
 }
 
 function showOrderLabModal(patientId) {
@@ -2532,7 +3036,7 @@ function showRecordVitalsModal(patientId) {
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitVitals('${patientId}')">Record & Push to Doctor</button>
+      <button class="btn btn-primary" onclick="submitVitals('${patientId}')">Record Vitals</button>
     </div>
   </div>`);
 }
@@ -3180,10 +3684,6 @@ function renderAdmitForm() {
           <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ad-phone" placeholder="10-digit number"></div>
         </div>
         <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints"></textarea></div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Provisional Diagnosis *</label><input class="form-control" id="ad-diag" placeholder="Diagnosis"></div>
-          <div class="form-group"><label class="form-label">ICD-10 Code</label><input class="form-control" id="ad-icd" placeholder="e.g. J44.1"></div>
-        </div>
       </div>
     </div>
 
@@ -3277,11 +3777,11 @@ async function submitAdmit() {
   const isIPD = document.getElementById('admit-mode-toggle')?.checked || false;
   const name = document.getElementById('ad-name').value.trim();
   const age = document.getElementById('ad-age').value;
-  const diag = document.getElementById('ad-diag').value.trim();
   const cc = document.getElementById('ad-cc').value.trim();
-  if (!name || !age || !diag || !cc) { alert('Name, Age, Diagnosis and Chief Complaint are required.'); return; }
+  if (!name || !age || !cc) { alert('Name, Age and Chief Complaint are required.'); return; }
 
-  const icd = document.getElementById('ad-icd').value.trim() || 'Z00';
+  const diag = '';
+  const icd = 'Z00';
   const rx = document.getElementById('ad-rx').value.trim();
   const pid = 'P'+Date.now();
   const ehrId = 'EHR-'+Math.floor(10000+Math.random()*90000);
