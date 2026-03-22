@@ -1598,7 +1598,7 @@ function renderOPDConsultTab(id, p) {
     <div class="card mb-3">
       <div class="card-header">
         <h3>💊 Prescription</h3>
-        <button class="btn btn-primary btn-sm" onclick="saveExamination('${id}');showAddMedModal('${id}')">+ Add Drug</button>
+        <button class="btn btn-primary btn-sm" onclick="showAddMedModal('${id}')">+ Add Drug</button>
       </div>
       <div class="card-body" ${rxList.length===0?'':'style="padding:0"'}>
         ${rxList.length===0 ? '<div class="text-muted">No drugs added yet.</div>' :
@@ -2774,6 +2774,12 @@ async function submitMed(pid) {
   }
   showToast(`${valid.length} drug${valid.length>1?'s':''} added to prescription`);
   save();
+  // Refresh tab content if in OPD consult
+  if (S.activePatientId) {
+    const tabDiv = document.getElementById('tab-content');
+    const pt = S.patients.find(x=>x.id===pid);
+    if (tabDiv && pt && pt.status==='OPD') tabDiv.innerHTML = renderOPDConsultTab(pid, pt);
+  }
 }
 
 async function discontinueMed(pid, rxId) {
@@ -2899,6 +2905,11 @@ function submitVaccine(pid) {
 
   showToast(`${rows.length} vaccination${rows.length>1?'s':''} added`);
   save();
+  if (S.activePatientId) {
+    const tabDiv = document.getElementById('tab-content');
+    const pt = S.patients.find(x=>x.id===pid);
+    if (tabDiv && pt && pt.status==='OPD') tabDiv.innerHTML = renderOPDConsultTab(pid, pt);
+  }
 }
 
 function removeVaccine(pid, idx) {
@@ -2968,6 +2979,11 @@ async function submitLabOrder(pid) {
     showToast(res ? `${tests.length} test(s) ordered ✓` : `Ordered locally — server sync failed`, res ? 'info' : 'warn');
   } else { showToast(`${tests.length} investigation(s) ordered`); }
   save();
+  if (S.activePatientId) {
+    const tabDiv = document.getElementById('tab-content');
+    const pt = S.patients.find(x=>x.id===pid);
+    if (tabDiv && pt && pt.status==='OPD') tabDiv.innerHTML = renderOPDConsultTab(pid, pt);
+  }
 }
 
 function showRecordVitalsModal(patientId) {
