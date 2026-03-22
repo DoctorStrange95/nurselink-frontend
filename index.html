@@ -982,13 +982,13 @@ function switchRole(role) {
 function renderSidebar() {
   const navItems = {
     Doctor: [
+      { icon:'📊', label:'Dashboard', view:'analytics' },
       { icon:'🏥', label:'My Patients', view:'patients' },
       { icon:'➕', label:'New Patient', view:'admit' },
       { icon:'💊', label:'Prescriptions', view:'prescriptions' },
       { icon:'🔬', label:'Lab Orders', view:'labs' },
       { icon:'⚡', label:'Alerts', view:'alerts' },
       { icon:'📄', label:'Discharge', view:'discharge' },
-      { icon:'📈', label:'Analytics', view:'analytics' },
       { icon:'🔢', label:'OPD Queue', view:'queue' },
     ],
     Nurse: [
@@ -1046,9 +1046,8 @@ function renderSidebar() {
 function setNav(view) {
   S.activeNavItem[S.currentRole] = view;
   S.activePatientId = null;
-  // Save state silently, then forcefully render the new view
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
-  renderAll(); 
+  renderAll();
 }
 
 function renderMain() {
@@ -1220,7 +1219,7 @@ function renderOPDConsultation(id) {
 
   main.innerHTML = `
     <div class="flex items-center gap-3 mb-3">
-      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;save()">← Back</button>
+      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;try{localStorage.setItem('NL_STATE_V3',JSON.stringify(S))}catch(e){};renderAll()">← Back</button>
       <div style="flex:1">
         <span class="fw-600" style="font-size:16px">${p.name}</span>
         <span class="text-muted" style="margin-left:8px">${p.age}${p.gender==='M'?'M':'F'} | ${p.ehrId}</span>
@@ -1526,12 +1525,56 @@ function generateRx(id) {
         </div>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
       <button class="btn btn-outline" onclick="window.print()">🖨 Print</button>
-      <button class="btn btn-primary" onclick="finaliseConsult('${id}')">✔ Finalise & Close Consult</button>
+      <button class="btn btn-success" onclick="shareRxWhatsApp('${id}')">📱 WhatsApp</button>
+      <button class="btn btn-outline" style="border-color:var(--indigo);color:var(--indigo)" onclick="shareRxSMS('${id}')">💬 SMS</button>
+      <button class="btn btn-primary" onclick="downloadRxPDF('${id}')">⬇ Download PDF</button>
+      <button class="btn btn-primary" onclick="finaliseConsult('${id}')">✔ Finalise & Close</button>
     </div>
   </div>`);
+}
+
+function shareRxWhatsApp(id) {
+  const p = S.patients.find(x=>x.id===id);
+  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
+  const doc = S.staff.find(s=>s.id===p.doctorId) || S.staff.find(s=>s.role==='Doctor');
+  const text = `*Prescription — ${p.name}*\nUHID: ${p.ehrId} | ${p.age}Y/${p.gender==='M'?'M':'F'}\nDate: ${new Date().toLocaleDateString('en-IN')}\nDiagnosis: ${p.diagnosis||'—'}\n\n*Medications:*\n${rxList.map((r,i)=>`${i+1}. ${r.drug} ${r.dose} | ${r.route} | ${r.freq} × ${r.duration}`).join('\n')}\n\n_${doc?.name||'Doctor'}, ${doc?.dept||'NurseLink Clinic'}_`;
+  const phone = p.phone ? p.phone.replace(/\D/g,'') : '';
+  const url = `https://wa.me/${phone ? '91'+phone : ''}?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
+}
+
+function shareRxSMS(id) {
+  const p = S.patients.find(x=>x.id===id);
+  const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
+  const text = `Rx for ${p.name} (${p.ehrId}): ${rxList.map(r=>`${r.drug} ${r.dose} ${r.freq}`).join(', ')}. Date: ${new Date().toLocaleDateString('en-IN')}`;
+  const phone = p.phone ? p.phone.replace(/\D/g,'') : '';
+  window.open(`sms:${phone}?body=${encodeURIComponent(text)}`, '_blank');
+}
+
+function downloadRxPDF(id) {
+  const p = S.patients.find(x=>x.id===id);
+  const printContent = document.getElementById('rx-printable');
+  if (!printContent) { showToast('Open Rx preview first', 'warn'); return; }
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Rx_${p.ehrId}_${p.name.replace(/\s/g,'_')}</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'DM Sans', sans-serif; padding: 32px; max-width: 700px; margin: 0 auto; color: #1A2332; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #F0F4F8; padding: 8px 10px; text-align: left; font-size: 11px; text-transform: uppercase; color: #64748B; }
+      td { padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-size: 13px; }
+      @media print { body { padding: 0; } }
+    </style>
+  </head><body>
+    ${printContent.innerHTML}
+    <script>window.onload=function(){window.print();window.close();}<\/script>
+  </body></html>`);
+  win.document.close();
 }
 
 function finaliseConsult(id) {
@@ -1568,7 +1611,7 @@ function renderIPDDetail(id) {
   const main = document.getElementById('main');
   main.innerHTML = `
     <div class="flex items-center gap-3 mb-4">
-      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;save()">← Back</button>
+      <button class="btn btn-outline btn-sm" onclick="S.activePatientId=null;try{localStorage.setItem('NL_STATE_V3',JSON.stringify(S))}catch(e){};renderAll()">← Back</button>
       <div style="flex:1">
         <span class="fw-600" style="font-size:16px">${p.name}</span>
         <span class="text-muted" style="margin-left:8px">${p.age}${p.gender} | Bed ${p.bed} | ${p.ehrId}</span>
@@ -3424,6 +3467,7 @@ function renderAllLabs() {
 // ANALYTICS PAGE
 // ============================================================
 function renderAnalyticsPage() {
+  if (S.currentRole === 'Doctor') { renderDoctorDashboard(); return; }
   const main = document.getElementById('main');
   const active = S.patients.filter(p=>p.status==='Active').length;
   const opd = S.patients.filter(p=>p.status==='OPD').length;
@@ -3531,6 +3575,167 @@ function renderAnalyticsPage() {
 function openBedPatient(bedId) {
   const p = S.patients.find(x=>x.bed===bedId&&x.status==='Active');
   if (p) openPatient(p.id);
+}
+
+
+// ============================================================
+// DOCTOR DASHBOARD
+// ============================================================
+// ============================================================
+// DOCTOR DASHBOARD
+// ============================================================
+function renderDoctorDashboard() {
+  const main = document.getElementById('main');
+  const myName = getCurrentStaffName();
+  const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+  const myPts = S.patients.filter(p => {
+    if (myId) return String(p.doctorId) === myId;
+    const d = S.staff.find(s=>s.id===p.doctorId);
+    return d && d.name === myName;
+  });
+  const ipdActive = myPts.filter(p=>p.status==='Active');
+  const opdToday  = myPts.filter(p=>p.status==='OPD');
+  const discharged = myPts.filter(p=>p.status==='Discharged');
+  const myAlerts  = S.alerts.filter(a => myPts.find(p=>p.id===a.patientId) && !a.acked);
+
+  let totalLOS = 0, losCount = 0;
+  ipdActive.forEach(p => { const d = calcLOS(p.admitTime); if(d){totalLOS+=d;losCount++;} });
+  const avgLOS = losCount > 0 ? (totalLOS/losCount).toFixed(1) : '—';
+
+  const diagFreq = {};
+  myPts.forEach(p => { if(p.diagnosis) diagFreq[p.diagnosis]=(diagFreq[p.diagnosis]||0)+1; });
+  const topDiags = Object.entries(diagFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const hour = new Date().getHours();
+  const greeting = hour<12?'Good Morning':hour<17?'Good Afternoon':'Good Evening';
+  const docObj = S.staff.find(s=>s.name===myName)||{};
+
+  // KPI cards
+  const kpis = [
+    [ipdActive.length, 'Active IPD', 'var(--teal)'],
+    [opdToday.length,  'OPD Today',  'var(--indigo)'],
+    [discharged.length,'Discharged', 'var(--emerald)'],
+    [avgLOS,           'Avg LOS (d)','var(--amber)'],
+    [myAlerts.length,  'Alerts',      myAlerts.length>0?'var(--red)':'var(--emerald)'],
+  ];
+
+  // Alerts banner
+  let alertBanner = '';
+  if (myAlerts.length > 0) {
+    const rows = myAlerts.slice(0,3).map(a => {
+      const pt = myPts.find(p=>p.id===a.patientId);
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(198,40,40,.15)">'
+        + '<div><span style="font-weight:700;font-size:12px">'+a.title+'</span>'
+        + ' <span style="font-size:12px;color:var(--text-muted)">— '+(pt?pt.name:'')+' · '+a.time+'</span></div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="openPatient(\''+a.patientId+'\')">Open →</button>'
+        + '<button class="btn btn-outline btn-sm" style="font-size:11px;color:var(--emerald)" onclick="ackAlert(\''+a.id+'\')">Ack ✓</button>'
+        + '</div></div>';
+    }).join('');
+    alertBanner = '<div style="background:#FFEBEE;border:1.5px solid var(--red);border-radius:10px;padding:12px 16px;margin-bottom:16px">'
+      + '<div style="font-weight:700;color:var(--red);margin-bottom:8px">⚡ '+myAlerts.length+' Unacknowledged Alert'+(myAlerts.length>1?'s':'')+'</div>'
+      + rows + '</div>';
+  }
+
+  // IPD table rows
+  let ipdRows = '';
+  if (ipdActive.length === 0) {
+    ipdRows = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:20px">No active IPD patients</td></tr>';
+  } else {
+    ipdActive.forEach(p => {
+      const v = (S.vitals[p.id]||[])[0];
+      const los = calcLOS(p.admitTime);
+      const al = S.alerts.filter(a=>a.patientId===p.id&&!a.acked).length;
+      const vStr = v ? '<span class="'+(v.bpSys>180?'critical-val':v.bpSys>160?'warn-val':'')+'" style="font-family:var(--mono);font-size:11px">'+v.bpSys+'/'+v.bpDia+' · '+v.spo2+'%</span>' : '<span class="text-muted">—</span>';
+      ipdRows += '<tr onclick="openPatient(\''+p.id+'\')" style="cursor:pointer">'
+        + '<td><div class="fw-600">'+p.name+'</div><div class="text-muted" style="font-size:10px">'+(p.diagnosis||'—')+'</div></td>'
+        + '<td>'+(p.bed||'—')+'</td><td>'+los+'d</td><td>'+vStr+'</td>'
+        + '<td>'+(al>0?'<span class="badge badge-red">'+al+'</span>':'—')+'</td>'
+        + '<td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient(\''+p.id+'\')">Round →</button></td>'
+        + '</tr>';
+    });
+  }
+
+  // OPD list
+  let opdRows = opdToday.length === 0
+    ? '<div class="text-muted" style="padding:14px">No OPD patients today</div>'
+    : opdToday.map((p,i) =>
+        '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openPatient(\''+p.id+'\')">'
+        + '<div style="width:24px;height:24px;border-radius:50%;background:var(--indigo);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
+        + '<div style="flex:1"><div class="fw-600 text-sm">'+p.name+'</div><div class="text-muted" style="font-size:11px">'+(p.chiefComplaint||'No complaint')+'</div></div>'
+        + '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient(\''+p.id+'\')">Consult →</button>'
+        + '</div>'
+      ).join('');
+
+  // Top diagnoses
+  let diagHTML = '';
+  if (topDiags.length > 0) {
+    const rows = topDiags.map(([diag,count]) =>
+      '<div style="margin-bottom:8px">'
+      + '<div class="flex items-center justify-between mb-1">'
+      + '<span style="font-size:12px;font-weight:600">'+(diag.length>30?diag.substring(0,30)+'…':diag)+'</span>'
+      + '<span class="mono" style="font-size:12px">'+count+'</span></div>'
+      + '<div class="workload-bar" style="height:5px"><div class="workload-fill" style="width:'+Math.round((count/topDiags[0][1])*100)+'%"></div></div>'
+      + '</div>'
+    ).join('');
+    diagHTML = '<div class="card"><div class="card-header"><h3>📋 Top Diagnoses</h3></div><div class="card-body" style="padding:12px 14px">'+rows+'</div></div>';
+  }
+
+  // Pending tasks
+  const tasks = [];
+  myPts.forEach(p => {
+    const pendingLabs = (S.labOrders[p.id]||[]).filter(l=>l.status!=='Result Available');
+    if (pendingLabs.length>0) tasks.push({icon:'🔬',text:pendingLabs.length+' pending lab result'+(pendingLabs.length>1?'s':''),patient:p.name,pid:p.id});
+    if ((S.vitals[p.id]||[]).length===0 && p.status==='Active') tasks.push({icon:'📊',text:'No vitals recorded yet',patient:p.name,pid:p.id});
+  });
+  const taskRows = tasks.length===0
+    ? '<div class="text-muted" style="padding:16px">No pending tasks — all clear! ✓</div>'
+    : tasks.map(t =>
+        '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:16px">'+t.icon+'</span>'
+        + '<div style="flex:1"><div class="fw-600 text-sm">'+t.patient+'</div><div class="text-muted" style="font-size:11px">'+t.text+'</div></div>'
+        + '<button class="btn btn-outline btn-sm" onclick="openPatient(\''+t.pid+'\')">Open →</button>'
+        + '</div>'
+      ).join('');
+
+  main.innerHTML =
+    '<div class="flex items-center justify-between mb-4">'
+    + '<div><div class="section-title">'+greeting+', '+myName+' 👋</div>'
+    + '<div class="section-sub">'+new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' · '+(docObj.dept||'General Medicine')+'</div></div>'
+    + '<button class="btn btn-primary" onclick="setNav(\'admit\')">➕ New Patient</button>'
+    + '</div>'
+
+    + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">'
+    + kpis.map(([n,l,c]) =>
+        '<div class="card"><div class="card-body" style="text-align:center;padding:14px">'
+        + '<div style="font-size:28px;font-weight:800;color:'+c+'">'+n+'</div>'
+        + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">'+l+'</div>'
+        + '</div></div>'
+      ).join('')
+    + '</div>'
+
+    + alertBanner
+
+    + '<div class="grid-2 mb-4">'
+    + '<div class="card">'
+    + '<div class="card-header"><h3>🛏 Active IPD Patients</h3>'
+    + '<button class="btn btn-primary btn-sm" onclick="S._patientListTab=\'ipd\';setNav(\'patients\')">View All</button></div>'
+    + '<div style="overflow-x:auto"><table class="data-table"><thead><tr>'
+    + '<th>Patient</th><th>Bed</th><th>LOS</th><th>Vitals</th><th>Alerts</th><th></th>'
+    + '</tr></thead><tbody>'+ipdRows+'</tbody></table></div></div>'
+
+    + '<div style="display:flex;flex-direction:column;gap:12px">'
+    + '<div class="card">'
+    + '<div class="card-header"><h3>🩺 OPD Queue Today</h3>'
+    + '<button class="btn btn-primary btn-sm" onclick="S._patientListTab=\'opd\';setNav(\'patients\')">View All</button></div>'
+    + '<div style="max-height:200px;overflow-y:auto">'+opdRows+'</div></div>'
+    + diagHTML
+    + '</div></div>'
+
+    + '<div class="card">'
+    + '<div class="card-header"><h3>📌 Pending Tasks</h3></div>'
+    + '<div class="card-body" style="padding:0">'+taskRows+'</div>'
+    + '</div>';
 }
 
 // ============================================================
@@ -3798,57 +4003,56 @@ function checkExistingPatient(phone) {
   }
 }
 
-async function saveRegistration() {
-    // 1. Grab the values from the form
-    const firstName = document.getElementById('regFirstName').value;
-    const lastName = document.getElementById('regLastName').value;
-    const age = document.getElementById('regAge').value;
-    
-    // 2. Stop if they didn't fill out the basics
-    if (!firstName || !lastName || !age) {
-        alert("Please fill in all required fields (First Name, Last Name, Age).");
-        return;
-    }
-
-    // 3. Package the data for your backend
-    const payload = {
-        name: `${firstName} ${lastName}`,
-        age: parseInt(age),
-        gender: document.getElementById('regGender').value || 'Unknown',
-        phone: document.getElementById('regPhone').value || 'N/A',
-        chief_complaint: document.getElementById('regComplaint').value || 'None provided',
-        diagnosis: 'Pending Evaluation', 
-        icd_code: 'TBD',
-        allergies: 'NKDA', 
-        blood_group: 'Unknown',
-        status: 'OPD', 
-        diag_type: 'Provisional'
-    };
-
-    try {
-        // 4. Send the package to your backend database
-        const response = await apiPost('/patients', payload);
-
-        // 5. If it worked, show success!
-        if (response) {
-            console.log("Patient saved:", response);
-            alert('Patient successfully registered in the database!');
-            
-            // Close the modal and reset the form
-            closeModal('registrationModal');
-            document.getElementById('regFirstName').value = '';
-            document.getElementById('regLastName').value = '';
-            document.getElementById('regAge').value = '';
-            // (You can add your local UI update code here later if needed)
-        } else {
-            alert("Error: Could not save patient. Check your backend.");
-        }
-
-    } catch (error) {
-        console.error("Error:", error);
-        alert("Failed to connect. Is your server running?");
-    }
+function saveRegistration() {
+  const fname = document.getElementById('reg-fname').value.trim();
+  const lname = document.getElementById('reg-lname').value.trim();
+  const age = document.getElementById('reg-age').value;
+  if (!fname || !lname || !age) { alert('First name, last name and age are required.'); return; }
+  const uhid = generateUHID();
+  const pid = 'P'+Date.now();
+  const patient = {
+    id:pid, name:`${fname} ${lname}`, age:parseInt(age),
+    gender:document.getElementById('reg-gender').value,
+    phone:document.getElementById('reg-phone').value.trim(),
+    ehrId:uhid, diagnosis:'', icd:'', bed:'',
+    doctorId:'', nurseId:'',
+    admissionType:'OPD', admitTime:now(), status:'OPD',
+    chiefComplaint:document.getElementById('reg-cc').value.trim(),
+    allergies:'None Known', bloodGroup:document.getElementById('reg-bg').value,
+    height:document.getElementById('reg-height').value,
+    weight:document.getElementById('reg-weight').value,
+    bmi:document.getElementById('reg-bmi').value,
+  };
+  S.patients.unshift(patient);
+  S.vitals[pid] = [];
+  S.prescriptions[pid] = [];
+  S.labOrders[pid] = [];
+  S.consultNotes[pid] = [];
+  S.nursingNotes[pid] = [];
+  S.chat[pid] = [];
+  // Add initial vitals if entered
+  const bps = parseInt(document.getElementById('reg-bps').value);
+  const bpd = parseInt(document.getElementById('reg-bpd').value);
+  const pulse = parseInt(document.getElementById('reg-pulse').value);
+  const spo2 = parseInt(document.getElementById('reg-spo2').value);
+  if (bps && bpd && pulse) {
+    S.vitals[pid].push({ id:'V'+Date.now(), time:ts(), bpSys:bps, bpDia:bpd, pulse, spo2:spo2||98, temp:37.0, rr:18, gcs:15, uo:40, glucose:100, drain:0, pain:0, notes:'Registration vitals', nurse:getCurrentStaffName() });
+  }
+  // Add to OPD queue
+  if (!S.opdQueue) S.opdQueue = [];
+  S.opdQueue.unshift({ pid, name:patient.name, uhid, cc:patient.chiefComplaint, time:ts(), status:'Waiting' });
+  showToast(`UHID generated: ${uhid}`);
+  showModal(`<div class="modal"><div class="modal-header"><h2>✅ Patient Registered</h2><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:800;color:var(--teal);letter-spacing:2px">${uhid}</div>
+      <div class="text-muted mt-2">Share this UHID with the patient</div>
+      <div style="margin-top:16px;font-size:14px"><b>${patient.name}</b> | ${patient.age} yrs | ${patient.gender==='M'?'Male':patient.gender==='F'?'Female':'Other'}</div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal();setNav('queue')">Go to Queue</button></div>
+  </div>`);
+  save();
 }
+
 // ============================================================
 // OPD QUEUE (Counter / Doctor)
 // ============================================================
