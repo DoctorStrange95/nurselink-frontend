@@ -4777,6 +4777,9 @@ function renderDoctorDashboard() {
   const opdToday  = myPts.filter(p=>p.status==='OPD');
   const discharged = myPts.filter(p=>p.status==='Discharged');
   const myAlerts  = S.alerts.filter(a => myPts.find(p=>p.id===a.patientId) && !a.acked);
+  // Waiting queue — all OPD patients not yet consulted (including counter-registered)
+  const opdWaiting = (S.opdQueue||[]).filter(q=>q.status==='Waiting'||q.status==='Called')
+    .concat(S.patients.filter(p=>p.status==='OPD' && !p.consulted && !(S.prescriptions[p.id]||[]).length && !(S.consultNotes[p.id]||[]).length && !(S.opdQueue||[]).find(q=>q.pid===p.id)));
 
   let totalLOS = 0, losCount = 0;
   ipdActive.forEach(p => { const d = calcLOS(p.admitTime); if(d){totalLOS+=d;losCount++;} });
@@ -4836,16 +4839,19 @@ function renderDoctorDashboard() {
     });
   }
 
-  // OPD list
-  let opdRows = opdToday.length === 0
-    ? '<div class="text-muted" style="padding:14px">No OPD patients today</div>'
-    : opdToday.map((p,i) =>
-        '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openPatient(\''+p.id+'\')">'
-        + '<div style="width:24px;height:24px;border-radius:50%;background:var(--indigo);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
-        + '<div style="flex:1"><div class="fw-600 text-sm">'+p.name+'</div><div class="text-muted" style="font-size:11px">'+(p.chiefComplaint||'No complaint')+'</div></div>'
-        + '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient(\''+p.id+'\')">Consult →</button>'
-        + '</div>'
-      ).join('');
+  // OPD list — show only waiting (unconsulted)
+  let opdRows = opdWaiting.length === 0
+    ? '<div class="text-muted" style="padding:14px">No patients waiting</div>'
+    : opdWaiting.map((q,i) => {
+        const pid = q.pid || q.id;
+        const name = q.name;
+        const cc = q.cc || q.chiefComplaint || 'No complaint';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openPatient(\''+pid+'\')">'
+          + '<div style="width:24px;height:24px;border-radius:50%;background:var(--indigo);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
+          + '<div style="flex:1"><div class="fw-600 text-sm">'+name+'</div><div class="text-muted" style="font-size:11px">'+cc+'</div></div>'
+          + '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPatient(\''+pid+'\')">Consult →</button>'
+          + '</div>';
+      }).join('');
 
   // Top diagnoses
   let diagHTML = '';
@@ -4886,12 +4892,16 @@ function renderDoctorDashboard() {
     + '</div>'
 
     + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">'
-    + kpis.map(([n,l,c]) =>
-        '<div class="card"><div class="card-body" style="text-align:center;padding:14px">'
-        + '<div style="font-size:28px;font-weight:800;color:'+c+'">'+n+'</div>'
-        + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">'+l+'</div>'
-        + '</div></div>'
-      ).join('')
+    + kpis.map(([n,l,c],i) => {
+        const click = i===1 ? "onclick=\"S._patientListTab='opd';setNav('patients')\"" // OPD Today
+                    : i===0 ? "onclick=\"S._patientListTab='ipd';setNav('patients')\""  // Active IPD
+                    : i===2 ? "onclick=\"S._patientListTab='discharged';setNav('patients')\"" // Discharged
+                    : '';
+        return '<div class="card" style="cursor:'+(click?'pointer':'default')+'" '+click+'><div class="card-body" style="text-align:center;padding:14px">'
+          + '<div style="font-size:28px;font-weight:800;color:'+c+'">'+n+'</div>'
+          + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">'+l+'</div>'
+          + '</div></div>';
+      }).join('')
     + '</div>'
 
     + alertBanner
@@ -5239,9 +5249,26 @@ function saveRegistration() {
 function renderQueuePage() {
   const main = document.getElementById('main');
   if (!S.opdQueue) S.opdQueue = [];
+
+  // Sync: ensure every unconsulted OPD patient is in the queue
+  S.patients.filter(p=>p.status==='OPD').forEach(p => {
+    const isConsulted = p.consulted || (S.prescriptions[p.id]||[]).length>0 || (S.consultNotes[p.id]||[]).length>0;
+    if (isConsulted) return; // already consulted — skip
+    if (!S.opdQueue.find(q=>q.pid===p.id)) {
+      S.opdQueue.push({
+        pid: p.id,
+        name: p.name,
+        uhid: p.ehrId,
+        cc: p.chiefComplaint || '',
+        time: p.admitTime || '',
+        status: 'Waiting'
+      });
+    }
+  });
+
   const waiting = S.opdQueue.filter(q=>q.status==='Waiting');
-  const called = S.opdQueue.filter(q=>q.status==='Called');
-  const done = S.opdQueue.filter(q=>q.status==='Done');
+  const called  = S.opdQueue.filter(q=>q.status==='Called');
+  const done    = S.opdQueue.filter(q=>q.status==='Done');
   main.innerHTML = `
     <div class="flex items-center justify-between mb-4">
       <div>
@@ -5301,13 +5328,27 @@ function renderQueuePage() {
 function callPatient(pid) {
   if (!S.opdQueue) return;
   const q = S.opdQueue.find(x=>x.pid===pid);
-  if (q) { q.status='Called'; save(); }
+  if (q) {
+    q.status = 'Called';
+    if (IS_LIVE && q.id && /^[0-9a-f-]{36}$/i.test(String(q.id))) {
+      apiPatch('/queue/' + q.id + '/status', { status: 'Called' });
+    }
+    save();
+    renderQueuePage();
+  }
 }
 
 function markQueueDone(pid) {
   if (!S.opdQueue) return;
   const q = S.opdQueue.find(x=>x.pid===pid);
-  if (q) { q.status='Done'; save(); }
+  if (q) {
+    q.status = 'Done';
+    if (IS_LIVE && q.id && /^[0-9a-f-]{36}$/i.test(String(q.id))) {
+      apiPatch('/queue/' + q.id + '/status', { status: 'Done' });
+    }
+    save();
+    renderQueuePage();
+  }
 }
 
 // ============================================================
