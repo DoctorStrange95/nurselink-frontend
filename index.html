@@ -723,7 +723,12 @@ async function tryLoadLiveData() {
       nurseId: String(p.nurse_id || p.nurseId || ''),
       admissionType: p.admission_type || p.admissionType || '',
       admitTime: p.admit_time || p.admitTime || '',
-      status: p.status || 'Active',
+      status: (() => {
+        const s = p.status || 'Active';
+        // If DB says Active but no bed assigned, treat as OPD
+        if (s === 'Active' && !p.bed && (p.admission_type||'').toLowerCase().includes('opd')) return 'OPD';
+        return s;
+      })(),
       chiefComplaint: p.chief_complaint || p.chiefComplaint || '',
       allergies: p.allergies || '',
       bloodGroup: p.blood_group || p.bloodGroup || ''
@@ -809,6 +814,42 @@ function connectSocket() {
       renderAll();
     });
     socket.on('patient:admitted', p => { refreshLiveData(); });
+    socket.on('queue:update', () => { refreshLiveData(); });
+
+    // SOS events — show overlay on ALL connected clients
+    socket.on('sos:trigger', data => {
+      // Add patient to local state if not present
+      const exists = S.patients.find(p=>String(p.id)===String(data.patientId));
+      S.sosActive = true;
+      S.sosPatientId = String(data.patientId);
+      S.alerts.unshift({ id:'SOS'+Date.now(), patientId:String(data.patientId), type:'critical', title:'SOS ALERT', msg:`Manual SOS by ${data.sender}`, time:data.time||ts(), acked:false });
+      S.notifications.unshift({ id:'N'+Date.now(), role:'Doctor', title:'🚨 SOS ALERT', body:`${data.patientName} — SOS from ${data.sender}`, time:data.time||ts(), read:false });
+      S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'🚨 SOS ALERT', body:`${data.patientName} — SOS triggered`, time:data.time||ts(), read:false });
+      // Show the full-screen overlay
+      const overlay = document.getElementById('sos-overlay');
+      if (overlay) {
+        overlay.style.display = 'flex';
+        document.getElementById('sos-patient-name').textContent = `${data.patientName} | Bed ${data.bed||'—'}`;
+        document.getElementById('sos-details').innerHTML = data.vitals
+          ? `BP: ${data.vitals.bpSys}/${data.vitals.bpDia} | SpO₂: ${data.vitals.spo2}% | Pulse: ${data.vitals.pulse}\nTriggered by: ${data.sender}`
+          : `No vitals on record\nTriggered by: ${data.sender}`;
+        document.getElementById('sos-ack-note').textContent =
+          S.currentRole === 'Doctor' ? 'Tap Acknowledge to dismiss' : 'Doctor must acknowledge this SOS';
+      }
+      renderAlertFeed();
+      renderNotifBadge();
+      showToast(`🚨 SOS: ${data.patientName}`, 'error');
+      try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+    });
+
+    socket.on('sos:acknowledge', data => {
+      document.getElementById('sos-overlay').style.display = 'none';
+      S.sosActive = false;
+      S.alerts.filter(a=>a.title==='SOS ALERT'&&a.patientId===String(data.patientId)).forEach(a=>a.acked=true);
+      showToast(`SOS acknowledged by ${data.by}`);
+      renderAlertFeed();
+      try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+    });
   };
   document.head.appendChild(script);
 }
@@ -2706,18 +2747,43 @@ function triggerSOS(pid) {
   if (!confirm(`Send SOS for ${S.patients.find(p=>p.id===pid)?.name}?`)) return;
   const p = S.patients.find(x=>x.id===pid);
   const vitals = (S.vitals[pid]||[])[0];
+  const sender = getCurrentStaffName();
+
+  // Show overlay on THIS screen
+  showSOSOverlay(pid, vitals, sender);
+
+  // Broadcast to ALL connected clients via socket
+  if (socket && IS_LIVE) {
+    socket.emit('sos:trigger', {
+      patientId: pid,
+      patientName: p.name,
+      bed: p.bed,
+      sender,
+      vitals: vitals || null,
+      time: ts()
+    });
+  }
+
+  // Add to local state
   S.sosActive = true;
   S.sosPatientId = pid;
+  S.alerts.unshift({ id:'SOS'+Date.now(), patientId:pid, type:'critical', title:'SOS ALERT', msg:`Manual SOS by ${sender}`, time:ts(), acked:false });
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Doctor', title:'🚨 SOS ALERT', body:`${p.name} — Manual SOS from ${sender}`, time:ts(), read:false });
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'🚨 SOS ALERT', body:`${p.name} — SOS triggered`, time:ts(), read:false });
+  save();
+}
+
+function showSOSOverlay(pid, vitals, sender) {
+  const p = S.patients.find(x=>x.id===pid);
+  if (!p) return;
   const overlay = document.getElementById('sos-overlay');
   overlay.style.display = 'flex';
-  document.getElementById('sos-patient-name').textContent = `${p.name} | Bed ${p.bed}`;
+  document.getElementById('sos-patient-name').textContent = `${p.name} | Bed ${p.bed||'—'}`;
   document.getElementById('sos-details').innerHTML = vitals
-    ? `BP: ${vitals.bpSys}/${vitals.bpDia} | SpO₂: ${vitals.spo2}% | Pulse: ${vitals.pulse}\nUO: ${vitals.uo} ml/hr | Temp: ${vitals.temp}°C\nNurse: ${vitals.nurse} | ${vitals.time}`
-    : 'No vitals on record\nNurse: ' + getCurrentStaffName();
-  document.getElementById('sos-ack-note').textContent = 'Switch to Doctor role to acknowledge';
-  S.alerts.unshift({ id:'SOS'+Date.now(), patientId:pid, type:'critical', title:'SOS ALERT', msg:`Manual SOS by ${getCurrentStaffName()}`, time:ts(), acked:false });
-  S.notifications.unshift({ id:'N'+Date.now(), role:'Doctor', title:'🚨 SOS ALERT', body:`${p.name} — Manual SOS from ${getCurrentStaffName()}`, time:ts(), read:false });
-  save();
+    ? `BP: ${vitals.bpSys}/${vitals.bpDia} | SpO₂: ${vitals.spo2}% | Pulse: ${vitals.pulse}\nUO: ${vitals.uo} ml/hr | Temp: ${vitals.temp}°C\nTriggered by: ${sender}`
+    : `No vitals on record\nTriggered by: ${sender}`;
+  document.getElementById('sos-ack-note').textContent =
+    S.currentRole === 'Doctor' ? 'Tap Acknowledge to dismiss' : 'Doctor must acknowledge this SOS';
 }
 
 function acknowledgeSOS() {
@@ -2729,6 +2795,12 @@ function acknowledgeSOS() {
   const pid = S.sosPatientId;
   S.sosActive = false;
   const p = S.patients.find(x=>x.id===pid);
+
+  // Broadcast acknowledgement to all clients
+  if (socket && IS_LIVE) {
+    socket.emit('sos:acknowledge', { patientId: pid, by: getCurrentStaffName() });
+  }
+
   showToast(`SOS acknowledged for ${p?.name}`);
   S.alerts.filter(a=>a.title==='SOS ALERT'&&a.patientId===pid).forEach(a=>a.acked=true);
   save();
