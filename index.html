@@ -1112,7 +1112,12 @@ function ts() {
 function getRole() { return S.currentRole; }
 function getStaff(role) { return S.staff.find(s => s.role === role) || S.staff[0]; }
 function getCurrentStaffName() {
-  if (IS_LIVE && window._loggedInUser) return window._loggedInUser.name;
+  if (IS_LIVE && window._loggedInUser) {
+    if (window._loggedInUser.role === S.currentRole || !window._loggedInUser.role) return window._loggedInUser.name;
+    // SPOOFING: if the logged-in doctor switched to Nurse, simulate a Nurse's identity
+    const spoof = S.staff.find(s => s.role === S.currentRole);
+    if (spoof) return spoof.name;
+  }
   const m = { Doctor:'Dr. Arjun Mehta', Nurse:'Priya Sharma', Pharmacist:'Raj Dispensary', 'Lab Tech':'Anand Kumar', Admin:'Vikram Singh' };
   return m[getRole()] || 'Staff';
 }
@@ -1306,7 +1311,7 @@ function renderMain() {
     analytics: renderAnalyticsPage,
     billing: renderBillingPage,
     billslist: renderBillsListPage,
-    register: renderRegisterPage,
+    register: renderAdmitForm,
     queue: renderQueuePage,
     network: renderNetworkPage,
     profile: renderProfilePage,
@@ -2541,11 +2546,11 @@ function renderChatTab(id, p) {
         </div>
       `).join('')}
     </div>
-    ${(role==='Doctor'||role==='Nurse') ? `
+    ${((role==='Doctor'||role==='Nurse') && !!p.nurseId && !!p.doctorId) ? `
     <div class="flex gap-2">
       <input class="form-control" id="chat-input-${id}" placeholder="Type message..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat('${id}')">
       <button class="btn btn-primary" onclick="sendChat('${id}')">Send</button>
-    </div>` : '<div class="text-muted text-sm">Only doctors and nurses can chat directly.</div>'}
+    </div>` : ((role==='Doctor'||role==='Nurse') && (!p.nurseId || !p.doctorId)) ? '<div class="alert-item warning">Team is not fully assigned. Chat disabled.</div>' : '<div class="text-muted text-sm">Only doctors and nurses can chat directly.</div>'}
   `;
 }
 
@@ -3801,14 +3806,16 @@ function renderAdmitForm() {
         <div class="card-body">
           <div class="form-row-3">
             <div class="form-group">
-              <label class="form-label">Admitting Doctor</label>
+              <label class="form-label">Assign a Team (Doctor)</label>
               <select class="form-control" id="ad-doc">
+                <option value="auto">Auto-assign based on workload (AI)</option>
                 ${doctors.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Assign Nurse</label>
+              <label class="form-label">Assign a Team (Nurse)</label>
               <select class="form-control" id="ad-nurse">
+                <option value="auto">Auto-assign based on workload (AI)</option>
                 ${nurses.map(n=>`<option value="${n.id}">${n.name} (${n.dept})</option>`).join('')}
               </select>
             </div>
@@ -3908,9 +3915,21 @@ async function submitAdmit() {
 
   // IPD-only fields
   const bed = isIPD ? document.getElementById('ad-bed')?.value : '';
-  const docId = isIPD ? document.getElementById('ad-doc')?.value : (S.staff.find(s=>s.role==='Doctor')?.id || '');
-  const nurseId = isIPD ? document.getElementById('ad-nurse')?.value : '';
+  let docId = isIPD ? document.getElementById('ad-doc')?.value : (S.staff.find(s=>s.role==='Doctor')?.id || '');
+  let nurseId = isIPD ? document.getElementById('ad-nurse')?.value : '';
   const admType = isIPD ? document.getElementById('ad-type')?.value : 'OPD Consultation';
+
+  if (docId === 'auto') {
+    const docs = S.staff.filter(s=>s.role==='Doctor');
+    if(docs.length) docId = docs.sort((a,b)=>S.patients.filter(p=>p.doctorId===a.id && p.status==='Active').length - S.patients.filter(p=>p.doctorId===b.id && p.status==='Active').length)[0].id;
+    else docId = '';
+  }
+
+  if (nurseId === 'auto') {
+    const nrss = S.staff.filter(s=>s.role==='Nurse');
+    if(nrss.length) nurseId = nrss.sort((a,b)=>S.patients.filter(p=>p.nurseId===a.id && p.status==='Active').length - S.patients.filter(p=>p.nurseId===b.id && p.status==='Active').length)[0].id;
+    else nurseId = '';
+  }
   const allergy = isIPD ? document.getElementById('ad-allergy')?.value.trim() : 'None Known';
   const bg = isIPD ? document.getElementById('ad-bg')?.value : '';
 
@@ -3976,9 +3995,8 @@ async function submitAdmit() {
 
   // Push to backend if live
   if (IS_LIVE) {
-    // doctor_id and nurse_id from backend staff (numeric), not local S-prefixed IDs
-    const liveDocId = window._loggedInUser?.id || null;
-    const liveNurseId = null; // nurse assignment done separately in live mode
+    const liveDocId = docId || null;
+    const liveNurseId = nurseId || null;
 
     const liveResult = await apiPost('/patients', {
       name, age: parseInt(age),
@@ -4235,7 +4253,7 @@ function renderVitalsPage() {
   const myName = getCurrentStaffName();
   const myPts = S.patients.filter(p=>{
     const n = S.staff.find(s=>s.id===p.nurseId);
-    return n && n.name === myName;
+    return n && n.name === myName && p.status === 'Active';
   });
   const main = document.getElementById('main');
   main.innerHTML = `
@@ -4261,7 +4279,7 @@ function renderMARPage() {
   const myName = getCurrentStaffName();
   const myPts = S.patients.filter(p=>{
     const n = S.staff.find(s=>s.id===p.nurseId);
-    return n && n.name === myName;
+    return n && n.name === myName && p.status === 'Active';
   });
   const main = document.getElementById('main');
   main.innerHTML = `
@@ -4301,7 +4319,7 @@ function renderNotesPage() {
   const myName = getCurrentStaffName();
   const myPts = S.patients.filter(p=>{
     const n = S.staff.find(s=>s.id===p.nurseId);
-    return n && n.name === myName;
+    return n && n.name === myName && p.status === 'Active';
   });
   const main = document.getElementById('main');
   main.innerHTML = `
