@@ -507,29 +507,109 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
 <div id="notif-dropdown"></div>
 
 <!-- LOGIN SCREEN -->
+
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--navy);z-index:500;align-items:center;justify-content:center;">
-  <div style="background:white;border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
-    <div style="text-align:center;margin-bottom:32px;">
+
+  <div style="background:white;border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+
+    <div style="text-align:center;margin-bottom:24px;">
+
       <div style="font-size:28px;font-weight:800;color:var(--navy);letter-spacing:-1px;">NurseLink<span style="color:var(--teal);font-weight:300"> IPD</span></div>
+
       <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Clinical Coordination System</div>
+
     </div>
+
+    <!-- Login type tabs -->
+
+    <div style="display:flex;border-radius:10px;overflow:hidden;border:1.5px solid var(--border);margin-bottom:24px;">
+
+      <button id="tab-hospital" onclick="switchLoginTab('hospital')" style="flex:1;padding:10px;font-size:13px;font-weight:700;border:none;cursor:pointer;background:var(--navy);color:white;font-family:var(--font)">Hospital Staff</button>
+
+      <button id="tab-patient" onclick="switchLoginTab('patient')" style="flex:1;padding:10px;font-size:13px;font-weight:700;border:none;cursor:pointer;background:white;color:var(--text-muted);font-family:var(--font)">Patient Portal</button>
+
+    </div>
+
     <div id="login-error" style="display:none;background:#FFEBEE;color:#C62828;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;border-left:3px solid #C62828;"></div>
-    <div class="form-group">
-      <label class="form-label">Email</label>
-      <input class="form-control" id="login-email" type="email" placeholder="doctor@nurselink.in" value="admin@nurselink.in">
+
+
+
+    <!-- Hospital login -->
+
+    <div id="login-hospital-form">
+
+      <div class="form-group">
+
+        <label class="form-label">Email</label>
+
+        <input class="form-control" id="login-email" type="email" placeholder="doctor@nurselink.in" value="admin@nurselink.in">
+
+      </div>
+
+      <div class="form-group">
+
+        <label class="form-label">Password</label>
+
+        <input class="form-control" id="login-password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value="password123">
+
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" onclick="doLogin()" id="login-btn">Sign In</button>
+
+      <div style="text-align:center;margin-top:16px;">
+
+        <span style="font-size:12px;color:var(--text-muted);">— or —</span>
+
+        <button onclick="demoMode()" style="display:block;width:100%;margin-top:8px;background:none;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--text-muted);font-family:var(--font);">Continue in Demo Mode (offline)</button>
+
+      </div>
+
     </div>
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input class="form-control" id="login-password" type="password" placeholder="••••••••" value="password123">
+
+
+
+    <!-- Patient login -->
+
+    <div id="login-patient-form" style="display:none;">
+
+      <div style="background:#E0F7FA;border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:#00838F;border-left:3px solid var(--teal)">
+
+        <strong>Patient Portal</strong> — Access your prescriptions, discharge summary, and AI health assistant.<br>
+
+        <span style="opacity:0.8">Use your registered email: <strong>patient@nurselink.in</strong></span>
+
+      </div>
+
+      <div class="form-group">
+
+        <label class="form-label">Patient Email</label>
+
+        <input class="form-control" id="patient-email" type="email" placeholder="patient@nurselink.in" value="patient@nurselink.in">
+
+      </div>
+
+      <div class="form-group">
+
+        <label class="form-label">Date of Birth (as password)</label>
+
+        <input class="form-control" id="patient-dob" type="text" placeholder="DD/MM/YYYY or your name" value="patient123">
+
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;background:var(--teal);" onclick="patientLogin()">Enter Patient Portal</button>
+
+      <div style="text-align:center;margin-top:12px;font-size:11px;color:var(--text-muted)">Demo: any credentials work for the patient portal</div>
+
     </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" onclick="doLogin()" id="login-btn">Sign In</button>
-    <div style="text-align:center;margin-top:16px;">
-      <span style="font-size:12px;color:var(--text-muted);">— or —</span>
-      <button onclick="demoMode()" style="display:block;width:100%;margin-top:8px;background:none;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--text-muted);font-family:var(--font);">Continue in Demo Mode (offline)</button>
-    </div>
+
+
+
     <div id="login-server-status" style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-muted);">Checking server...</div>
+
   </div>
+
 </div>
+
 
 <!-- APP -->
 <div id="app" style="display:none;">
@@ -566,9 +646,7 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; 
 <div id="toast-container"></div>
 
 <script>
-// ============================================================
 // API LAYER — connects to nurselink-server.onrender.com
-// ============================================================
 const API_BASE = 'https://nurselink-server.onrender.com/api';
 let API_TOKEN = null;
 let IS_LIVE = false;
@@ -626,9 +704,7 @@ async function apiPatch(path, body) {
   } catch(e) { console.error(`[API PATCH ${path}] Network error:`, e.message); return null; }
 }
 
-// ============================================================
 // STARTUP — show login or app
-// ============================================================
 async function startup() {
   // Check if server is reachable
   const statusEl = document.getElementById('login-server-status');
@@ -708,8 +784,10 @@ async function tryLoadLiveData() {
 
   IS_LIVE = true;
 
-  // Map backend data into app state
-  if (staffRes && Array.isArray(staffRes)) {
+  // Map backend data into app state — keep INIT demo data if server returns empty
+  const DEMO = JSON.parse(JSON.stringify(INIT));
+
+  if (staffRes && Array.isArray(staffRes) && staffRes.length > 0) {
     const colorMap = { Doctor:'#00B4A6', Nurse:'#5C6BC0', Pharmacist:'#2E7D32', 'Lab Tech':'#F57C00', Admin:'#546E7A' };
     S.staff = staffRes.map(s => ({
       id: String(s.id),
@@ -721,7 +799,7 @@ async function tryLoadLiveData() {
     }));
   }
 
-  if (patientsRes && Array.isArray(patientsRes)) {
+  if (patientsRes && Array.isArray(patientsRes) && patientsRes.length > 0) {
     S.patients = patientsRes.map(p => ({
       id: String(p.id),
       name: p.name,
@@ -791,12 +869,24 @@ async function tryLoadLiveData() {
     }));
   }
 
+  // If server returned no patients/staff, use demo data so app isn't blank
+  if (!S.patients || S.patients.length === 0) S.patients = DEMO.patients;
+  if (!S.staff || S.staff.length === 0) S.staff = DEMO.staff;
+  if (!S.vitals || Object.keys(S.vitals).length === 0) S.vitals = DEMO.vitals;
+  if (!S.prescriptions || Object.keys(S.prescriptions).length === 0) S.prescriptions = DEMO.prescriptions;
+  if (!S.beds || S.beds.length === 0) S.beds = DEMO.beds;
+
   return true;
 }
 
 function demoMode() {
   IS_LIVE = false;
+  S = JSON.parse(JSON.stringify(INIT));
+  S.activeNavItem = {};
+  S.activePatientId = null;
+  try { localStorage.removeItem('NL_STATE_V3'); } catch(e) {}
   showApp(false);
+  renderAll();
 }
 
 let socket = null;
@@ -953,9 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startup();
 });
 
-// ============================================================
 // STATE
-// ============================================================
 const now = () => {
   const d = new Date();
   return d.toLocaleDateString('en-IN') + ' ' + d.toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'});
@@ -1068,6 +1156,16 @@ const INIT = {
 };
 
 let S = JSON.parse(localStorage.getItem('NL_STATE_V3')) || JSON.parse(JSON.stringify(INIT));
+// Always reset active nav on load to prevent stale routing
+S.activeNavItem = {};
+S.activePatientId = null;
+// If patients or staff are empty, reset to INIT (handles corrupted state)
+if (!S.patients || S.patients.length === 0 || !S.staff || S.staff.length === 0) {
+  S = JSON.parse(JSON.stringify(INIT));
+  try { localStorage.removeItem('NL_STATE_V3'); } catch(e) {}
+}
+// Always ensure beds exists
+if (!S.beds) S.beds = JSON.parse(JSON.stringify(INIT.beds||[]));
 
 function save() {
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
@@ -1101,9 +1199,7 @@ function resetState() {
   save();
 }
 
-// ============================================================
 // HELPERS
-// ============================================================
 function ts() {
   return new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) + ' ' +
          new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'2-digit'});
@@ -1180,9 +1276,7 @@ function showPayload(data) {
   </div>`);
 }
 
-// ============================================================
 // RENDER ALL
-// ============================================================
 function renderAll() {
   renderTopbar();
   renderSidebar();
@@ -1194,9 +1288,13 @@ function renderAll() {
 
 function renderTopbar() {
   const roles = ['Doctor','Nurse','Pharmacist','Lab Tech','Admin','Billing','Counter'];
-  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)' };
+  const roleColors = { Doctor:'var(--teal)', Nurse:'var(--indigo)', Pharmacist:'var(--emerald)', 'Lab Tech':'var(--amber)', Admin:'var(--slate)', Billing:'var(--red)', Counter:'var(--indigo)', Patient:'var(--teal)' };
   document.documentElement.style.setProperty('--role-color', roleColors[S.currentRole] || 'var(--teal)');
-  if (IS_LIVE) {
+  if (S.currentRole === 'Patient') {
+    const pname = window._patientUser ? window._patientUser.name : 'Patient';
+    document.getElementById('role-switcher').innerHTML =
+      `<span style="padding:5px 14px;border-radius:20px;background:var(--teal);color:white;font-size:12px;font-weight:700">ðŸ§‘â€!•ï¸ ${pname}</span>`;
+  } else if (IS_LIVE) {
     const color = roleColors[S.currentRole] || 'var(--teal)';
     document.getElementById('role-switcher').innerHTML =
       `<span style="padding:5px 14px;border-radius:20px;background:${color};color:white;font-size:12px;font-weight:700">${S.currentRole}</span>`;
@@ -1219,6 +1317,7 @@ function renderSidebar() {
       { icon:'📊', label:'Dashboard', view:'analytics' },
       { icon:'🏥', label:'My Patients', view:'patients' },
       { icon:'➕', label:'New Patient', view:'admit' },
+      { icon:'🧠', label:'AI Triage', view:'triage' },
       { icon:'💊', label:'Prescriptions', view:'prescriptions' },
       { icon:'🔬', label:'Lab Orders', view:'labs' },
       { icon:'⚡', label:'Alerts', view:'alerts' },
@@ -1226,6 +1325,7 @@ function renderSidebar() {
       { icon:'🔢', label:'OPD Queue', view:'queue' },
       { icon:'🩺', label:'Dr. Network', view:'network' },
       { icon:'👤', label:'My Profile', view:'profile' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
     ],
     Nurse: [
       { icon:'🏥', label:'My Patients', view:'patients' },
@@ -1233,14 +1333,17 @@ function renderSidebar() {
       { icon:'💊', label:'Medication MAR', view:'mar' },
       { icon:'📝', label:'Nursing Notes', view:'notes' },
       { icon:'⚡', label:'Alerts', view:'alerts' },
+      { icon:'🧠', label:'AI Triage', view:'triage' },
     ],
     Pharmacist: [
       { icon:'💊', label:'Prescriptions', view:'pharmacy' },
       { icon:'📦', label:'Inventory', view:'inventory' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
     ],
     'Lab Tech': [
       { icon:'🔬', label:'Lab Orders', view:'labtech' },
       { icon:'📋', label:'Results', view:'results' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
     ],
     Admin: [
       { icon:'👥', label:'Staff', view:'staff' },
@@ -1249,14 +1352,26 @@ function renderSidebar() {
       { icon:'📋', label:'Audit Log', view:'audit' },
       { icon:'📊', label:'Workload', view:'workload' },
       { icon:'📈', label:'Analytics', view:'analytics' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
     ],
     Billing: [
       { icon:'💰', label:'Billing', view:'billing' },
       { icon:'📋', label:'Bills List', view:'billslist' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
     ],
     Counter: [
       { icon:'🏥', label:'Register Patient', view:'register' },
       { icon:'🔢', label:'OPD Queue', view:'queue' },
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
+    ],
+    Patient: [
+
+      { icon:'🩺', label:'Patient AI', view:'patientai' },
+
+      { icon:'ðŸ’Š', label:'My Prescriptions', view:'patient-rx' },
+
+      { icon:'📎', label:'Discharge Summary', view:'patient-discharge' },
+
     ],
   };
   const items = navItems[S.currentRole] || [];
@@ -1283,12 +1398,14 @@ function setNav(view) {
   S.activeNavItem[S.currentRole] = view;
   S.activePatientId = null;
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
-  renderAll();
+  renderSidebar();
+  renderMain();
 }
 
 function renderMain() {
   const view = S.activePatientId ? 'patientDetail' : (S.activeNavItem[S.currentRole] || getDefaultView());
   const main = document.getElementById('main');
+  if (!main) return;
   const renders = {
     patients: renderPatientList,
     patientDetail: () => renderPatientDetail(S.activePatientId),
@@ -1314,7 +1431,12 @@ function renderMain() {
     register: renderAdmitForm,
     queue: renderQueuePage,
     network: renderNetworkPage,
+    workload: renderWorkloadPage,
     profile: renderProfilePage,
+    triage: renderTriagePage,
+    patientai: renderPatientAIPage,
+    'patient-rx': renderPatientRxPage,
+    'patient-discharge': renderPatientDischargePage,
   };
   if (view === 'patientDetail') { renders.patientDetail(); return; }
   // Admin cannot access patient write views
@@ -1325,22 +1447,28 @@ function renderMain() {
 }
 
 function getDefaultView() {
-  const defaults = { Doctor:'patients', Nurse:'patients', Pharmacist:'pharmacy', 'Lab Tech':'labtech', Admin:'analytics', Billing:'billing', Counter:'queue' };
+  const defaults = { Doctor:'patients', Nurse:'patients', Pharmacist:'pharmacy', 'Lab Tech':'labtech', Admin:'analytics', Billing:'billing', Counter:'queue', Patient:'patientai' };
   return defaults[S.currentRole] || 'patients';
 }
 
-// ============================================================
 // PATIENT LIST
-// ============================================================
 function renderPatientList() {
   const role = S.currentRole;
   let allPts = S.patients;
   if (role === 'Nurse') {
     const myName = getCurrentStaffName();
-    allPts = allPts.filter(p => { const n = S.staff.find(s=>s.id===p.nurseId); return n&&n.name===myName; });
+    const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+    allPts = allPts.filter(p => {
+      const n = S.staff.find(s=>s.id===p.nurseId);
+      return (n && n.name===myName) || (myId && String(p.nurseId)===myId);
+    });
   } else if (role === 'Doctor') {
     const myName = getCurrentStaffName();
-    allPts = allPts.filter(p => { const d = S.staff.find(s=>s.id===p.doctorId); return d&&d.name===myName; });
+    const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
+    allPts = allPts.filter(p => {
+      const d = S.staff.find(s=>s.id===p.doctorId);
+      return (d && d.name===myName) || (myId && String(p.doctorId)===myId);
+    });
   }
 
   const ipdPts = allPts.filter(p=>p.status==='Active');
@@ -1464,9 +1592,7 @@ function openPatient(id) {
   loadPatientData(id);
 }
 
-// ============================================================
 // PATIENT DETAIL
-// ============================================================
 function renderPatientDetail(id) {
   const p = S.patients.find(x => x.id === id);
   if (!p) return;
@@ -1477,9 +1603,7 @@ function renderPatientDetail(id) {
   }
 }
 
-// ============================================================
 // OPD CONSULTATION SCREEN (4-tab: History | Examine | Prescribe | Actions)
-// ============================================================
 function renderOPDConsultation(id) {
   const p = S.patients.find(x => x.id === id);
   if (!p) return;
@@ -1776,20 +1900,106 @@ function renderOPDActionsTab(id, p) {
 function convertOPDtoIPD(id) {
   const p = S.patients.find(x=>x.id===id);
   if (!p) return;
-  // Switch to admit form pre-filled and set mode to IPD
-  S.activePatientId = null;
-  setNav('admit');
-  setTimeout(()=>{
-    const toggle = document.getElementById('admit-mode-toggle');
-    if (toggle) { toggle.checked = true; toggleAdmitMode(true); }
-    const nameEl = document.getElementById('ad-name');
-    if (nameEl) nameEl.value = p.name;
-    const ageEl = document.getElementById('ad-age');
-    if (ageEl) ageEl.value = p.age;
-    const ccEl = document.getElementById('ad-cc');
-    if (ccEl) ccEl.value = p.chiefComplaint||'';
-    showToast('Pre-filled from OPD record — select bed to complete IPD admission');
-  }, 200);
+  const availBeds = (S.beds||[]).filter(b=>b.status==='available');
+  const nurses = S.staff.filter(s=>s.role==='Nurse');
+
+  showModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🛏 Admit to IPD — ${p.name}</h2>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#E3F2FD;border-radius:8px;padding:12px;font-size:13px;color:#1565C0;margin-bottom:16px">
+          Converting OPD patient to IPD admission. Current diagnosis: <strong>${p.chiefComplaint||'—'}</strong>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Assign Bed *</label>
+            <select class="form-control" id="ipd-bed-sel">
+              ${availBeds.length ? availBeds.map(b=>`<option value="${b.id}">${b.id} (Ward ${b.ward})</option>`).join('') : '<option value="">No beds available</option>'}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assign Nurse</label>
+            <select class="form-control" id="ipd-nurse-sel">
+              <option value="">Auto-assign</option>
+              ${nurses.map(n=>`<option value="${n.id}">${n.name}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Blood Group</label>
+            <select class="form-control" id="ipd-bg-sel">
+              <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+              <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Allergies</label>
+            <input class="form-control" id="ipd-allergy-inp" placeholder="None Known" value="${p.allergies||'None Known'}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Admission Type</label>
+          <select class="form-control" id="ipd-type-sel">
+            <option>Post-OPD Consultation</option>
+            <option>Direct IPD</option>
+            <option>Emergency</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmIPDConvert('${id}')">✔ Confirm IPD Admission</button>
+      </div>
+    </div>
+  `);
+}
+
+async function confirmIPDConvert(id) {
+  const p = S.patients.find(x=>x.id===id);
+  if (!p) return;
+  const bed = document.getElementById('ipd-bed-sel')?.value;
+  if (!bed) { showToast('Please select a bed', 'error'); return; }
+  let nurseId = document.getElementById('ipd-nurse-sel')?.value;
+  const bg = document.getElementById('ipd-bg-sel')?.value;
+  const allergy = document.getElementById('ipd-allergy-inp')?.value;
+  const admType = document.getElementById('ipd-type-sel')?.value;
+
+  if (!nurseId) {
+    const nurses = S.staff.filter(s=>s.role==='Nurse');
+    if (nurses.length) nurseId = nurses.sort((a,b)=>
+      S.patients.filter(x=>x.nurseId===a.id&&x.status==='Active').length -
+      S.patients.filter(x=>x.nurseId===b.id&&x.status==='Active').length
+    )[0].id;
+  }
+
+  p.status = 'Active';
+  p.bed = bed;
+  p.nurseId = nurseId;
+  p.bloodGroup = bg;
+  p.allergies = allergy;
+  p.admissionType = admType;
+  p.admitTime = now();
+
+  const bedObj = (S.beds||[]).find(b=>b.id===bed);
+  if (bedObj) bedObj.status = 'occupied';
+
+  const nurse = S.staff.find(s=>s.id===nurseId);
+  S.notifications.unshift({ id:'N'+Date.now(), role:'Nurse', title:'New IPD Patient', body:`${p.name} admitted — Bed ${bed}`, time:ts(), read:false });
+
+  if (IS_LIVE) {
+    await apiPatch('/patients/'+id, { status:'Active', bed, nurse_id:nurseId||null, blood_group:bg, allergies:allergy, admission_type:admType });
+  }
+
+  closeModal();
+  showToast(`${p.name} admitted to IPD — Bed ${bed}`);
+  S.activePatientId = id;
+  S.activeTab[id] = 'overview';
+  S.activeNavItem[S.currentRole] = 'patients';
+  save();
 }
 
 function saveReferral(id) {
@@ -1810,9 +2020,7 @@ function saveConsultFee(id) {
   if (p) { p.consultFee = fee; save(); showToast('Consultation fee saved (internal record)'); }
 }
 
-// ============================================================
 // PRESCRIPTION GENERATOR
-// ============================================================
 function generateRx(id) {
   const p = S.patients.find(x=>x.id===id);
   if (!p) return;
@@ -2113,9 +2321,7 @@ function finaliseConsult(id) {
   save();
 }
 
-// ============================================================
 // IPD DETAIL SCREEN (existing tabs, renamed for clarity)
-// ============================================================
 function renderIPDDetail(id) {
   const p = S.patients.find(x => x.id === id);
   if (!p) return;
@@ -2554,9 +2760,7 @@ function renderChatTab(id, p) {
   `;
 }
 
-// ============================================================
 // MODALS
-// ============================================================
 function showDoctorOrderModal(patientId) {
   const p = S.patients.find(x=>x.id===patientId);
   window._rxDrugs = [{}];
@@ -3226,9 +3430,7 @@ async function sendChat(pid) {
   save();
 }
 
-// ============================================================
 // PATIENT HISTORY PDF VIEW
-// ============================================================
 function showPatientHistoryPDF(pid) {
   const p = S.patients.find(x=>x.id===pid);
   if (!p) return;
@@ -3479,9 +3681,7 @@ function printHistoryPDF(pid) {
   win.document.close();
 }
 
-// ============================================================
 // AI CLINICAL SUMMARY
-// ============================================================
 async function showAISummary(pid) {
   const p = S.patients.find(x=>x.id===pid);
   if (!p) return;
@@ -3586,9 +3786,7 @@ Keep it concise and clinical. Use plain text, no markdown symbols.`;
   }
 }
 
-// ============================================================
 // SOS
-// ============================================================
 function triggerSOS(pid) {
   if (!confirm(`Send SOS for ${S.patients.find(p=>p.id===pid)?.name}?`)) return;
   const p = S.patients.find(x=>x.id===pid);
@@ -3652,9 +3850,7 @@ function acknowledgeSOS() {
   save();
 }
 
-// ============================================================
 // ALERT FEED
-// ============================================================
 function renderAlertFeed() {
   const feed = document.getElementById('alert-feed');
   const unacked = S.alerts.filter(a=>!a.acked).slice(0,15);
@@ -3688,9 +3884,7 @@ async function ackAlert(id) {
   }
 }
 
-// ============================================================
 // NOTIFICATIONS
-// ============================================================
 function renderNotifBadge() {
   const myNotifs = S.notifications.filter(n=>n.role===S.currentRole&&!n.read);
   const badge = document.getElementById('notif-badge');
@@ -3726,154 +3920,564 @@ function markNotifRead(id) {
   if (n) n.read = true;
 }
 
-// ============================================================
 // OTHER VIEWS
-// ============================================================
 
 // ADMIT FORM
 function renderAdmitForm() {
+
   const main = document.getElementById('main');
+
   const nurses = S.staff.filter(s=>s.role==='Nurse');
+
   const doctors = S.staff.filter(s=>s.role==='Doctor');
-  const availBeds = S.beds.filter(b=>b.status==='available');
+
+  const availBeds = (S.beds||[]).filter(b=>b.status==='available');
+
+
+
+  const doctorCardsHtml = doctors.map(d => {
+
+    const load = S.patients.filter(p => String(p.doctorId) === String(d.id) && p.status === 'Active').length;
+
+    const pct = Math.min(100, load * 12);
+
+    const cls = pct > 70 ? 'high' : pct > 40 ? 'med' : '';
+
+    const colors = ['#00B4A6','#5C6BC0','#2E7D32','#F57C00','#C62828','#546E7A'];
+
+    const bg = colors[doctors.indexOf(d) % colors.length];
+
+    return `<div id="doc-card-${d.id}" onclick="selectAdmitDoctor('${d.id}')" style="border:2px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:all 0.15s;background:white">
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+
+        <div style="width:38px;height:38px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0">${d.name.charAt(0)}</div>
+
+        <div>
+
+          <div style="font-weight:700;font-size:13px">${d.name}</div>
+
+          <div style="font-size:11px;color:var(--text-muted)">${d.specialty||d.department||'General'}</div>
+
+        </div>
+
+        <div id="doc-badge-${d.id}" style="margin-left:auto;display:none;background:var(--teal);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">AI Pick</div>
+
+      </div>
+
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Patients: <strong>${load}</strong></div>
+
+      <div class="workload-bar"><div class="workload-fill ${cls}" style="width:${pct}%"></div></div>
+
+    </div>`;
+
+  }).join('');
+
+
+
   main.innerHTML = `
+
     <div class="flex items-center justify-between mb-2">
+
       <div>
-        <div class="section-title" id="admit-form-title">OPD Consultation</div>
-        <div class="section-sub" id="admit-form-sub">Quick consultation — no bed assignment</div>
+
+        <div class="section-title" id="admit-form-title">New Patient</div>
+
+        <div class="section-sub" id="admit-form-sub">Enter vitals for AI triage, then assign a doctor</div>
+
       </div>
-      <!-- OPD / IPD Toggle -->
+
       <div style="display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:6px 10px;border:1.5px solid var(--border);">
+
         <span id="lbl-opd" style="font-size:13px;font-weight:700;color:var(--teal)">OPD</span>
+
         <div class="toggle-switch" style="width:44px;height:24px;">
+
           <input type="checkbox" id="admit-mode-toggle" onchange="toggleAdmitMode(this.checked)">
+
           <label class="toggle-slider" for="admit-mode-toggle" style="cursor:pointer;"></label>
+
         </div>
+
         <span id="lbl-ipd" style="font-size:13px;font-weight:700;color:var(--text-muted)">IPD</span>
+
       </div>
+
     </div>
 
-    <!-- PATIENT INFO (shared) -->
-    <div class="card">
-      <div class="card-header"><h3>Patient Information</h3></div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="ad-name" placeholder="Patient full name"></div>
-          <div class="form-group"><label class="form-label">Age *</label><input class="form-control" id="ad-age" type="number" placeholder="Age"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Sex</label>
-            <select class="form-control" id="ad-gender"><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
-          </div>
-          <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ad-phone" placeholder="10-digit number"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Height (cm)</label><input class="form-control" id="ad-height" type="number" placeholder="165" oninput="calcAdmitBMI()"></div>
-          <div class="form-group"><label class="form-label">Weight (kg)</label><input class="form-control" id="ad-weight" type="number" placeholder="70" oninput="calcAdmitBMI()"></div>
-        </div>
-        <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="ad-bmi" readonly placeholder="Enter height & weight"></div>
-        <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints"></textarea></div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Address</label><input class="form-control" id="ad-address" placeholder="Street / Area / Locality"></div>
-          <div class="form-group"><label class="form-label">Pincode</label><input class="form-control" id="ad-pincode" placeholder="6-digit pincode" maxlength="6" type="number"></div>
-        </div>
-        <div class="form-group"><label class="form-label">Chronic / Pre-existing Diseases</label>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
-            ${['Diabetes','Hypertension','Asthma','COPD','Heart Disease','Chronic Kidney Disease','Liver Disease','Epilepsy','Thyroid Disorder','Cancer','HIV/AIDS','Tuberculosis','Stroke','Obesity','Arthritis'].map(d=>`
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;background:var(--panel);padding:4px 10px;border-radius:20px;border:1px solid var(--border)">
-                <input type="checkbox" class="ad-chronic-cb" value="${d}"> ${d}
-              </label>`).join('')}
-          </div>
-          <input class="form-control mt-2" id="ad-chronic-other" placeholder="Other (type here)" style="margin-top:6px">
-        </div>
-      </div>
-    </div>
 
-    <!-- PRESCRIPTION (shared) -->
-    <div class="card mt-4">
-      <div class="card-header"><h3>Prescription <span style="font-weight:400;color:var(--text-muted)">(optional)</span></h3></div>
-      <div class="card-body">
-        <textarea class="form-control" id="ad-rx" rows="3" placeholder="e.g. Tab. Paracetamol 500mg Oral TDS × 5 days"></textarea>
-        <div class="text-muted mt-2" style="font-size:11px">Free text — pushed to Pharmacy queue</div>
-      </div>
-    </div>
 
-    <!-- IPD ONLY SECTION (hidden by default) -->
-    <div id="ipd-section" style="display:none;">
-      <div class="card mt-4">
-        <div class="card-header"><h3>Care Team & Bed Assignment</h3></div>
-        <div class="card-body">
-          <div class="form-row-3">
-            <div class="form-group">
-              <label class="form-label">Assign a Team (Doctor)</label>
-              <select class="form-control" id="ad-doc">
-                <option value="auto">Auto-assign based on workload (AI)</option>
-                ${doctors.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
-              </select>
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
+
+      <div>
+
+        <!-- PATIENT INFO -->
+
+        <div class="card">
+
+          <div class="card-header"><h3>Patient Information</h3></div>
+
+          <div class="card-body">
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="ad-name" placeholder="Patient full name"></div>
+
+              <div class="form-group"><label class="form-label">Age *</label><input class="form-control" id="ad-age" type="number" placeholder="Age" oninput="liveTriageUpdate()"></div>
+
             </div>
-            <div class="form-group">
-              <label class="form-label">Assign a Team (Nurse)</label>
-              <select class="form-control" id="ad-nurse">
-                <option value="auto">Auto-assign based on workload (AI)</option>
-                ${nurses.map(n=>`<option value="${n.id}">${n.name} (${n.dept})</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Bed *</label>
-              <select class="form-control" id="ad-bed">
-                ${availBeds.length===0 ? '<option>No beds available</option>' : availBeds.map(b=>`<option value="${b.id}">${b.id} (Ward ${b.ward})</option>`).join('')}
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Blood Group</label>
-              <select class="form-control" id="ad-bg">
-                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
-                <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
-              </select>
-            </div>
-            <div class="form-group"><label class="form-label">Allergies</label><input class="form-control" id="ad-allergy" placeholder="None Known"></div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Admission Type</label>
-            <select class="form-control" id="ad-type">
-              <option>Post-OPD Consultation</option><option>Direct IPD</option><option>Emergency</option><option>Transfer</option>
-            </select>
-          </div>
-          <!-- Insurance -->
-          <div class="form-group">
-            <label class="form-label">Insurance</label>
-            <div class="flex gap-3 mb-2">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="no" checked onchange="document.getElementById('ins-details').style.display='none'"> No Insurance</label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="yes" onchange="document.getElementById('ins-details').style.display='block'"> Has Insurance</label>
-            </div>
-            <div id="ins-details" style="display:none">
-              <div class="form-row">
-                <div class="form-group"><label class="form-label">Insurance Company *</label><input class="form-control" id="ad-ins-company" placeholder="e.g. Star Health, ICICI Lombard"></div>
-                <div class="form-group"><label class="form-label">Policy Number *</label><input class="form-control" id="ad-ins-policy" placeholder="Policy number"></div>
+
+            <div class="form-row">
+
+              <div class="form-group">
+
+                <label class="form-label">Sex</label>
+
+                <select class="form-control" id="ad-gender"><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
+
               </div>
+
+              <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ad-phone" placeholder="10-digit number"></div>
+
+            </div>
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Height (cm)</label><input class="form-control" id="ad-height" type="number" placeholder="165" oninput="calcAdmitBMI()"></div>
+
+              <div class="form-group"><label class="form-label">Weight (kg)</label><input class="form-control" id="ad-weight" type="number" placeholder="70" oninput="calcAdmitBMI()"></div>
+
+            </div>
+
+            <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="ad-bmi" readonly placeholder="Enter height & weight"></div>
+
+            <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints" oninput="liveTriageUpdate()"></textarea></div>
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Address</label><input class="form-control" id="ad-address" placeholder="Street / Area / Locality"></div>
+
+              <div class="form-group"><label class="form-label">Pincode</label><input class="form-control" id="ad-pincode" placeholder="6-digit pincode" maxlength="6" type="number"></div>
+
+            </div>
+
+            <div class="form-group"><label class="form-label">Chronic / Pre-existing Diseases</label>
+
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+
+                ${['Diabetes','Hypertension','Asthma','COPD','Heart Disease','Chronic Kidney Disease','Liver Disease','Epilepsy','Thyroid Disorder','Cancer','HIV/AIDS','Tuberculosis','Stroke','Obesity','Arthritis'].map(d=>`
+
+                  <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;background:var(--panel);padding:4px 10px;border-radius:20px;border:1px solid var(--border)">
+
+                    <input type="checkbox" class="ad-chronic-cb" value="${d}"> ${d}
+
+                  </label>`).join('')}
+
+              </div>
+
+              <input class="form-control mt-2" id="ad-chronic-other" placeholder="Other (type here)" style="margin-top:6px">
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- AI Triage — Vitals -->
+
+        <div class="card mt-4">
+
+          <div class="card-header" style="background:var(--navy);color:white">
+
+            <h3>🧠 AI Triage — Vitals</h3>
+
+            <span style="font-size:11px;opacity:0.6">Updates doctor recommendation live</span>
+
+          </div>
+
+          <div class="card-body">
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Systolic BP</label><input class="form-control" id="ad-sbp" type="number" placeholder="120" oninput="liveTriageUpdate()"></div>
+
+              <div class="form-group"><label class="form-label">Diastolic BP</label><input class="form-control" id="ad-dbp" type="number" placeholder="80" oninput="liveTriageUpdate()"></div>
+
+            </div>
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Heart Rate (bpm)</label><input class="form-control" id="ad-hr" type="number" placeholder="72" oninput="liveTriageUpdate()"></div>
+
+              <div class="form-group"><label class="form-label">SpO2 (%)</label><input class="form-control" id="ad-spo2" type="number" placeholder="98" oninput="liveTriageUpdate()"></div>
+
+            </div>
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">Resp. Rate</label><input class="form-control" id="ad-rr" type="number" placeholder="16" oninput="liveTriageUpdate()"></div>
+
+              <div class="form-group"><label class="form-label">Temperature (°C)</label><input class="form-control" id="ad-temp" type="number" placeholder="37.0" step="0.1" oninput="liveTriageUpdate()"></div>
+
+            </div>
+
+            <div class="form-row">
+
+              <div class="form-group"><label class="form-label">WBC (Ã—10Â³/ÂµL)</label><input class="form-control" id="ad-wbc" type="number" placeholder="7.5" step="0.1" oninput="liveTriageUpdate()"></div>
+
+              <div class="form-group"><label class="form-label">ECG Finding</label>
+
+                <select class="form-control" id="ad-ecg" onchange="liveTriageUpdate()">
+
+                  <option value="normal">Normal</option>
+
+                  <option value="stemi">STEMI</option>
+
+                  <option value="nstemi">NSTEMI / ACS</option>
+
+                  <option value="afib">Atrial Fibrillation</option>
+
+                  <option value="vt">Ventricular Tachycardia</option>
+
+                  <option value="other">Other Abnormal</option>
+
+                </select>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- PRESCRIPTION -->
+
+        <div class="card mt-4">
+
+          <div class="card-header"><h3>Prescription <span style="font-weight:400;color:var(--text-muted)">(optional)</span></h3></div>
+
+          <div class="card-body">
+
+            <textarea class="form-control" id="ad-rx" rows="3" placeholder="e.g. Tab. Paracetamol 500mg Oral TDS Ã— 5 days"></textarea>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- IPD ONLY -->
+
+        <div id="ipd-section" style="display:none;">
+
+          <div class="card mt-4">
+
+            <div class="card-header"><h3>Bed Assignment</h3></div>
+
+            <div class="card-body">
+
               <div class="form-row">
-                <div class="form-group"><label class="form-label">Member ID / Card No.</label><input class="form-control" id="ad-ins-member" placeholder="Member ID on card"></div>
-                <div class="form-group"><label class="form-label">Coverage Type</label>
-                  <select class="form-control" id="ad-ins-type">
-                    <option>Cashless</option><option>Reimbursement</option><option>TPA</option>
+
+                <div class="form-group">
+
+                  <label class="form-label">Nurse</label>
+
+                  <select class="form-control" id="ad-nurse">
+
+                    <option value="auto">Auto-assign</option>
+
+                    ${nurses.map(n=>`<option value="${n.id}">${n.name} (${n.dept})</option>`).join('')}
+
                   </select>
+
                 </div>
+
+                <div class="form-group">
+
+                  <label class="form-label">Bed *</label>
+
+                  <select class="form-control" id="ad-bed">
+
+                    ${availBeds.length===0 ? '<option>No beds available</option>' : availBeds.map(b=>`<option value="${b.id}">${b.id} (Ward ${b.ward})</option>`).join('')}
+
+                  </select>
+
+                </div>
+
               </div>
+
+              <div class="form-row">
+
+                <div class="form-group">
+
+                  <label class="form-label">Blood Group</label>
+
+                  <select class="form-control" id="ad-bg">
+
+                    <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+
+                    <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+
+                  </select>
+
+                </div>
+
+                <div class="form-group"><label class="form-label">Allergies</label><input class="form-control" id="ad-allergy" placeholder="None Known"></div>
+
+              </div>
+
+              <div class="form-group">
+
+                <label class="form-label">Admission Type</label>
+
+                <select class="form-control" id="ad-type">
+
+                  <option>Post-OPD Consultation</option><option>Direct IPD</option><option>Emergency</option><option>Transfer</option>
+
+                </select>
+
+              </div>
+
+              <div class="form-group">
+
+                <label class="form-label">Insurance</label>
+
+                <div class="flex gap-3 mb-2">
+
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="no" checked onchange="document.getElementById('ins-details').style.display='none'"> No Insurance</label>
+
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ins-toggle" value="yes" onchange="document.getElementById('ins-details').style.display='block'"> Has Insurance</label>
+
+                </div>
+
+                <div id="ins-details" style="display:none">
+
+                  <div class="form-row">
+
+                    <div class="form-group"><label class="form-label">Insurance Company</label><input class="form-control" id="ad-ins-company" placeholder="e.g. Star Health"></div>
+
+                    <div class="form-group"><label class="form-label">Policy Number</label><input class="form-control" id="ad-ins-policy" placeholder="Policy number"></div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
+
           </div>
+
         </div>
+
+
+
+        <div class="flex gap-3 mt-4">
+
+          <button class="btn btn-primary" id="admit-submit-btn" onclick="submitAdmit()">âœ” Save Consultation</button>
+
+          <button class="btn btn-outline" onclick="setNav('patients')">Cancel</button>
+
+        </div>
+
       </div>
+
+
+
+      <!-- RIGHT: TRIAGE RESULT + DOCTOR ASSIGNMENT -->
+
+      <div style="position:sticky;top:80px">
+
+        <!-- Triage Score Card -->
+
+        <div id="admit-triage-card" style="border:2px solid var(--border);border-radius:10px;background:white;margin-bottom:16px;overflow:hidden">
+
+          <div style="background:var(--navy);color:white;padding:12px 16px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
+
+          <div id="admit-triage-body" style="padding:16px;text-align:center;color:var(--text-muted)">
+
+            <div style="font-size:32px;margin-bottom:8px">🩺</div>
+
+            <div style="font-size:12px">Enter vitals to see triage score</div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- Doctor Assignment -->
+
+        <div style="border:2px solid var(--border);border-radius:10px;background:white;overflow:hidden">
+
+          <div style="background:var(--navy);color:white;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+
+            <span style="font-weight:700;font-size:13px">👨‍⚕️ Assign Doctor</span>
+
+            <span id="admit-doc-specialty" style="font-size:11px;opacity:0.7"></span>
+
+          </div>
+
+          <div style="padding:12px;display:flex;flex-direction:column;gap:8px" id="admit-doc-list">
+
+            ${doctorCardsHtml}
+
+          </div>
+
+          <input type="hidden" id="ad-doc" value="">
+
+        </div>
+
+      </div>
+
     </div>
 
-    <div class="flex gap-3 mt-4">
-      <button class="btn btn-primary" id="admit-submit-btn" onclick="submitAdmit()">✔ Save Consultation</button>
-      <button class="btn btn-outline" onclick="setNav('patients')">Cancel</button>
-    </div>
   `;
+
+
+
+  // Auto-select first doctor
+
+  if (doctors.length) selectAdmitDoctor(String(doctors[0].id));
+
 }
+
+
+
+function selectAdmitDoctor(id) {
+
+  const doctors = S.staff.filter(s=>s.role==='Doctor');
+
+  doctors.forEach(d => {
+
+    const card = document.getElementById('doc-card-' + d.id);
+
+    if (card) card.style.borderColor = String(d.id) === String(id) ? 'var(--teal)' : 'var(--border)';
+
+    if (card) card.style.background = String(d.id) === String(id) ? '#E0F7FA' : 'white';
+
+  });
+
+  const inp = document.getElementById('ad-doc');
+
+  if (inp) inp.value = id;
+
+}
+
+
+
+function liveTriageUpdate() {
+
+  const v = {
+
+    age: document.getElementById('ad-age')?.value,
+
+    sbp: document.getElementById('ad-sbp')?.value,
+
+    dbp: document.getElementById('ad-dbp')?.value,
+
+    hr:  document.getElementById('ad-hr')?.value,
+
+    spo2:document.getElementById('ad-spo2')?.value,
+
+    rr:  document.getElementById('ad-rr')?.value,
+
+    temp:document.getElementById('ad-temp')?.value,
+
+    wbc: document.getElementById('ad-wbc')?.value,
+
+    ecg: document.getElementById('ad-ecg')?.value,
+
+    symptoms: document.getElementById('ad-cc')?.value,
+
+  };
+
+
+
+  // Need at least one vital to score
+
+  const hasVitals = v.sbp || v.hr || v.spo2 || v.rr || v.temp;
+
+  if (!hasVitals) return;
+
+
+
+  const result = triageScore(v);
+
+  const body = document.getElementById('admit-triage-body');
+
+  if (!body) return;
+
+
+
+  const flagsHtml = result.flags.length
+
+    ? result.flags.slice(0,4).map(f=>`<div style="font-size:11px;color:var(--red);margin-top:3px">!  ${f}</div>`).join('')
+
+    : `<div style="font-size:11px;color:var(--success)">âœ“ No critical flags</div>`;
+
+
+
+  body.innerHTML = `
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+
+      <div style="font-size:28px;font-weight:900;color:${result.color}">${result.icon} ${result.severity}</div>
+
+      <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${result.color}">${result.score}</div>
+
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">ðŸ¥ ${result.specialty}</div>
+
+    ${flagsHtml}
+
+  `;
+
+  document.getElementById('admit-triage-card').style.borderColor = result.color;
+
+
+
+  // Auto-highlight best doctor
+
+  const best = assignDoctor(result.specialty, result.severity);
+
+  const specEl = document.getElementById('admit-doc-specialty');
+
+  if (specEl) specEl.textContent = result.specialty;
+
+
+
+  // Clear all AI badges
+
+  S.staff.filter(s=>s.role==='Doctor').forEach(d => {
+
+    const badge = document.getElementById('doc-badge-' + d.id);
+
+    if (badge) badge.style.display = 'none';
+
+  });
+
+
+
+  if (best) {
+
+    const badge = document.getElementById('doc-badge-' + best.id);
+
+    if (badge) badge.style.display = 'inline-block';
+
+    selectAdmitDoctor(String(best.id));
+
+  }
+
+}
+
+
 
 function toggleAdmitMode(isIPD) {
   const ipdSection = document.getElementById('ipd-section');
@@ -3915,7 +4519,7 @@ async function submitAdmit() {
 
   // IPD-only fields
   const bed = isIPD ? document.getElementById('ad-bed')?.value : '';
-  let docId = isIPD ? document.getElementById('ad-doc')?.value : (S.staff.find(s=>s.role==='Doctor')?.id || '');
+  let docId = document.getElementById('ad-doc')?.value || (S.staff.find(s=>s.role==='Doctor')?.id || '');
   let nurseId = isIPD ? document.getElementById('ad-nurse')?.value : '';
   const admType = isIPD ? document.getElementById('ad-type')?.value : 'OPD Consultation';
 
@@ -4064,11 +4668,11 @@ async function submitAdmit() {
     showToast(isIPD ? `${name} admitted to IPD` : `OPD consultation saved for ${name}`);
   }
 
-  showPayload({ event: isIPD ? 'PATIENT_ADMITTED_IPD' : 'OPD_CONSULTATION', patient_ehr_id: ehrId, patient_name: name, bed: bed || 'N/A', assigned_doctor: doc?.name, assigned_nurse: nurse?.name || 'N/A' });
   S.activePatientId = pid;
   S.activeTab[pid] = isIPD ? 'overview' : 'prescribe';
   S.activeNavItem[S.currentRole] = 'patients';
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  showToast(isIPD ? `${name} admitted` : `${name} consultation saved`);
   renderAll();
 }
 
@@ -4987,9 +5591,7 @@ function renderAllLabs() {
   `;
 }
 
-// ============================================================
 // ANALYTICS PAGE
-// ============================================================
 function renderAnalyticsPage() {
   if (S.currentRole === 'Doctor') { renderDoctorDashboard(); return; }
   const main = document.getElementById('main');
@@ -5318,9 +5920,7 @@ function renderIndiaMap(filter) {
   </svg>`;
 }
 
-// ============================================================
 // DOCTOR PROFILE
-// ============================================================
 function renderProfilePage() {
   const main = document.getElementById('main');
   const myId = IS_LIVE && window._loggedInUser ? String(window._loggedInUser.id) : null;
@@ -5412,9 +6012,7 @@ function saveProfile() {
   save();
 }
 
-// ============================================================
 // DOCTOR NETWORK
-// ============================================================
 
 function calcDoctorScore(docId) {
   const pts = S.patients.filter(p=>String(p.doctorId)===String(docId));
@@ -5642,8 +6240,10 @@ function renderNetworkPage() {
   // Load live data
   if (IS_LIVE) {
     if (activeTab==='feed') loadNetworkFeed().then(()=>{
-      // Only re-render if no input is focused (prevents dropdown flash on mobile)
-      if (!document.activeElement || document.activeElement.tagName === 'BODY') renderNetworkPage();
+      // Only re-render if still on network page
+      if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') {
+        if (!document.activeElement || document.activeElement.tagName === 'BODY') renderNetworkPage();
+      }
     });
     if (activeTab==='dms' && S._dmTo) loadNetworkDMs(S._dmTo);
   }
@@ -5732,7 +6332,7 @@ function submitNetPost() {
       .catch(() => {}); // silent — post already saved locally
   }
   save();
-  renderNetworkPage();
+  if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') renderNetworkPage();
 }
 
 function likePost(postId) {
@@ -5744,7 +6344,7 @@ function likePost(postId) {
   if(idx>=0) post.likes.splice(idx,1); else post.likes.push(myId);
   if (IS_LIVE && !/^NP/.test(post.id)) apiPost('/network/posts/'+post.id+'/like', {});
   save();
-  renderNetworkPage();
+  if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') renderNetworkPage();
 }
 
 function submitReply(postId) {
@@ -5757,7 +6357,7 @@ function submitReply(postId) {
   S._replyTo = null;
   if (IS_LIVE && !/^NP/.test(postId)) apiPost('/network/posts/'+postId+'/replies', { text });
   save();
-  renderNetworkPage();
+  if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') renderNetworkPage();
 }
 
 function sendDM(toId) {
@@ -5771,7 +6371,7 @@ function sendDM(toId) {
   S.network.dms[dmKey].push(msg);
   if (IS_LIVE) apiPost('/network/dms/'+toId, { text });
   save();
-  renderNetworkPage();
+  if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') renderNetworkPage();
 }
 
 async function loadNetworkDMs(peerId) {
@@ -5788,7 +6388,7 @@ async function loadNetworkDMs(peerId) {
     time: new Date(m.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
     read: m.read
   }));
-  renderNetworkPage();
+  if ((S.activeNavItem[S.currentRole] || getDefaultView()) === 'network') renderNetworkPage();
 }
 
 async function loadNetworkFeed() {
@@ -5820,12 +6420,8 @@ function openBedPatient(bedId) {
 }
 
 
-// ============================================================
 // DOCTOR DASHBOARD
-// ============================================================
-// ============================================================
 // DOCTOR DASHBOARD
-// ============================================================
 function renderDoctorDashboard() {
   const main = document.getElementById('main');
   const myName = getCurrentStaffName();
@@ -6025,9 +6621,7 @@ function renderDoctorDashboard() {
   }, 50);
 }
 
-// ============================================================
 // BILLING PAGE
-// ============================================================
 function renderBillingPage() {
   const main = document.getElementById('main');
   const discharged = S.patients.filter(p=>p.status==='Discharged'||p.status==='Active');
@@ -6214,9 +6808,7 @@ function viewBillSummary(pid) {
   </div>`);
 }
 
-// ============================================================
 // PATIENT REGISTRATION (Counter Staff)
-// ============================================================
 function generateUHID() {
   const yr = new Date().getFullYear();
   const num = String(Math.floor(10000+Math.random()*90000));
@@ -6367,9 +6959,7 @@ function saveRegistration() {
   save();
 }
 
-// ============================================================
 // OPD QUEUE (Counter / Doctor)
-// ============================================================
 function renderQueuePage() {
   const main = document.getElementById('main');
   if (!S.opdQueue) S.opdQueue = [];
@@ -6475,9 +7065,7 @@ function markQueueDone(pid) {
   }
 }
 
-// ============================================================
 // MOBILE HELPERS
-// ============================================================
 function isMobile() { return window.innerWidth <= 600; }
 
 function toggleMobileSidebar() {
@@ -6530,9 +7118,7 @@ function setupMobileUI() {
 
 window.addEventListener('resize', setupMobileUI);
 
-// ============================================================
 // CLOCK + SIMULATION
-// ============================================================
 function updateClock() {
   document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true }) + ' IST';
 }
@@ -6550,6 +7136,991 @@ document.addEventListener('click', e => {
 
 // INIT — startup() is called by DOMContentLoaded listener above
 // startup() shows login or loads live data then calls renderAll()
+</script>
+<script>
+// AI TRIAGE ENGINE — Hospital Module
+
+function triageScore(v) {
+  // v = { sbp, dbp, hr, rr, spo2, temp, age, symptoms, wbc, ecg }
+  let score = 0; let flags = []; let specialty = 'General Medicine';
+
+  const sbp = parseFloat(v.sbp)||0, dbp = parseFloat(v.dbp)||0;
+  const hr = parseFloat(v.hr)||0, rr = parseFloat(v.rr)||0;
+  const spo2 = parseFloat(v.spo2)||100, temp = parseFloat(v.temp)||37;
+  const age = parseInt(v.age)||30;
+  const syms = (v.symptoms||'').toLowerCase();
+  const wbc = parseFloat(v.wbc)||0;
+  const ecg = v.ecg||'normal';
+
+  // BP
+  if (sbp < 90 || dbp < 60) { score += 30; flags.push('Hypotension (BP < 90/60)'); specialty = 'Emergency'; }
+  else if (sbp > 180 || dbp > 110) { score += 25; flags.push('Hypertensive Crisis'); specialty = 'Cardiology'; }
+  else if (sbp > 140) { score += 10; flags.push('Elevated BP'); }
+
+  // HR
+  if (hr > 130) { score += 25; flags.push('Severe Tachycardia (HR > 130)'); }
+  else if (hr > 100) { score += 12; flags.push('Tachycardia'); }
+  else if (hr < 50) { score += 20; flags.push('Bradycardia (HR < 50)'); specialty = 'Cardiology'; }
+
+  // SpO2
+  if (spo2 < 88) { score += 35; flags.push('Critical Hypoxia (SpO2 < 88%)'); specialty = 'Pulmonology'; }
+  else if (spo2 < 92) { score += 25; flags.push('Hypoxia (SpO2 < 92%)'); specialty = 'Pulmonology'; }
+  else if (spo2 < 95) { score += 10; flags.push('Low SpO2'); }
+
+  // RR
+  if (rr > 30) { score += 20; flags.push('Severe Tachypnea (RR > 30)'); }
+  else if (rr > 20) { score += 8; flags.push('Tachypnea'); }
+  else if (rr < 10) { score += 15; flags.push('Bradypnea'); }
+
+  // Temp
+  if (temp > 39.5) { score += 15; flags.push('High Fever (> 39.5\u00B0C)'); }
+  else if (temp > 38.5) { score += 8; flags.push('Fever'); }
+  else if (temp < 35) { score += 20; flags.push('Hypothermia'); specialty = 'Emergency'; }
+
+  // Age risk
+  if (age > 70) score += 10;
+  else if (age > 60) score += 5;
+
+  // Symptoms
+  if (syms.includes('chest pain') || syms.includes('chest tightness')) {
+    score += 25; flags.push('Chest Pain'); specialty = 'Cardiology';
+  }
+  if (syms.includes('stroke') || syms.includes('facial droop') || syms.includes('slurred')) {
+    score += 35; flags.push('Stroke Symptoms'); specialty = 'Neurology';
+  }
+  if (syms.includes('seizure') || syms.includes('convuls')) {
+    score += 30; flags.push('Seizure'); specialty = 'Neurology';
+  }
+  if (syms.includes('bleed') || syms.includes('haemorrhage') || syms.includes('hemorrhage')) {
+    score += 30; flags.push('Bleeding'); specialty = 'Emergency';
+  }
+  if (syms.includes('breathless') || syms.includes('dyspnea') || syms.includes('shortness of breath')) {
+    score += 15; flags.push('Dyspnea');
+    if (specialty === 'General Medicine') specialty = 'Pulmonology';
+  }
+  if (syms.includes('abdominal pain') || syms.includes('abdomen')) {
+    score += 10; flags.push('Abdominal Pain');
+    if (specialty === 'General Medicine') specialty = 'Gastroenterology';
+  }
+  if (syms.includes('diabetic') || syms.includes('glucose') || syms.includes('sugar')) {
+    score += 8; flags.push('Diabetic Concern');
+    if (specialty === 'General Medicine') specialty = 'Endocrinology';
+  }
+
+  // WBC
+  if (wbc > 15) { score += 15; flags.push('Elevated WBC — Infection'); if (specialty === 'General Medicine') specialty = 'Infectious Disease'; }
+  else if (wbc > 11) { score += 8; flags.push('Mildly Elevated WBC'); }
+  else if (wbc > 0 && wbc < 3) { score += 20; flags.push('Leukopenia'); specialty = 'Hematology'; }
+
+  // ECG
+  if (ecg === 'stemi') { score += 40; flags.push('STEMI on ECG'); specialty = 'Cardiology'; }
+  else if (ecg === 'nstemi') { score += 30; flags.push('NSTEMI / ACS'); specialty = 'Cardiology'; }
+  else if (ecg === 'afib') { score += 20; flags.push('Atrial Fibrillation'); specialty = 'Cardiology'; }
+  else if (ecg === 'vt') { score += 40; flags.push('Ventricular Tachycardia'); specialty = 'Cardiology'; }
+
+  // Severity
+  let severity, color, icon;
+  if (score >= 60) { severity = 'CRITICAL'; color = 'var(--red)'; icon = '[!]'; }
+  else if (score >= 35) { severity = 'HIGH'; color = 'var(--warn)'; icon = '[!]'; }
+  else if (score >= 15) { severity = 'MODERATE'; color = 'var(--amber)'; icon = '[~]'; }
+  else { severity = 'LOW'; color = 'var(--success)'; icon = '[ok]'; }
+
+  return { score, severity, color, icon, flags, specialty };
+}
+
+function assignDoctor(specialty, severity) {
+  const doctors = S.staff.filter(s => s.role === 'Doctor');
+  if (!doctors.length) return null;
+
+  // Score each doctor: specialty match + workload + availability
+  const scored = doctors.map(d => {
+    let pts = 0;
+    const spec = (d.specialty || d.department || '').toLowerCase();
+    const specLower = specialty.toLowerCase();
+    if (spec.includes(specLower) || specLower.includes(spec)) pts += 50;
+    else if (spec.includes('general') || spec.includes('emergency')) pts += 20;
+
+    // Workload: count active patients
+    const load = S.patients.filter(p => String(p.doctorId) === String(d.id) && p.status === 'Active').length;
+    pts -= load * 5;
+
+    // Availability
+    if (d.available === false) pts -= 100;
+
+    return { doc: d, pts, load };
+  });
+
+  scored.sort((a, b) => b.pts - a.pts);
+  return scored[0]?.doc || null;
+}
+
+function renderTriagePage() {
+  const main = document.getElementById('main');
+  const doctors = S.staff.filter(s => s.role === 'Doctor');
+  main.innerHTML = `
+    <div class="section-title">🧠 AI Triage & Doctor Assignment</div>
+    <div class="section-sub">Enter patient vitals and symptoms — AI will score severity and recommend a specialist.</div>
+    <div class="grid-2" style="gap:20px;align-items:start">
+      <div>
+        <div class="card">
+          <div class="card-header"><h3>Patient Vitals Input</h3></div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Age</label>
+                <input class="form-control" id="tr-age" type="number" placeholder="35" min="0" max="120">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Gender</label>
+                <select class="form-control" id="tr-gender">
+                  <option>Male</option><option>Female</option><option>Other</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Systolic BP (mmHg)</label>
+                <input class="form-control" id="tr-sbp" type="number" placeholder="120">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Diastolic BP (mmHg)</label>
+                <input class="form-control" id="tr-dbp" type="number" placeholder="80">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Heart Rate (bpm)</label>
+                <input class="form-control" id="tr-hr" type="number" placeholder="72">
+              </div>
+              <div class="form-group">
+                <label class="form-label">SpO2 (%)</label>
+                <input class="form-control" id="tr-spo2" type="number" placeholder="98" min="50" max="100">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Resp. Rate (breaths/min)</label>
+                <input class="form-control" id="tr-rr" type="number" placeholder="16">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Temperature (°C)</label>
+                <input class="form-control" id="tr-temp" type="number" placeholder="37.0" step="0.1">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">WBC Count (Ã—10Â³/ÂµL)</label>
+                <input class="form-control" id="tr-wbc" type="number" placeholder="7.5" step="0.1">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ECG Finding</label>
+                <select class="form-control" id="tr-ecg">
+                  <option value="normal">Normal</option>
+                  <option value="stemi">STEMI</option>
+                  <option value="nstemi">NSTEMI / ACS</option>
+                  <option value="afib">Atrial Fibrillation</option>
+                  <option value="vt">Ventricular Tachycardia</option>
+                  <option value="other">Other Abnormal</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Chief Complaints / Symptoms</label>
+              <textarea class="form-control" id="tr-symptoms" rows="3" placeholder="e.g. chest pain, shortness of breath, fever, abdominal pain..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Past Medical History</label>
+              <input class="form-control" id="tr-history" placeholder="e.g. Diabetes, Hypertension, CAD...">
+            </div>
+            <button class="btn btn-primary w-full" style="justify-content:center;margin-top:4px" onclick="runTriage()">
+              🧠 Run AI Triage
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="triage-result-panel">
+        <div class="card" style="border:2px dashed var(--border);background:var(--panel)">
+          <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <div style="font-size:48px;margin-bottom:12px">🩺</div>
+            <div style="font-weight:600">Fill in vitals and click Run AI Triage</div>
+            <div style="font-size:12px;margin-top:6px">Results will appear here</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mt-4">
+      <div class="card">
+        <div class="card-header"><h3>👨‍⚕️ Doctor Availability & Workload</h3></div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+            ${doctors.map(d => {
+              const load = S.patients.filter(p => String(p.doctorId) === String(d.id) && p.status === 'Active').length;
+              const pct = Math.min(100, load * 12);
+              const cls = pct > 70 ? 'high' : pct > 40 ? 'med' : '';
+              return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+                <div style="font-weight:700;font-size:13px">${d.name}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">${d.specialty||d.department||'General'}</div>
+                <div style="font-size:11px;margin-bottom:4px">Patients: <strong>${load}</strong></div>
+                <div class="workload-bar"><div class="workload-fill ${cls}" style="width:${pct}%"></div></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function runTriage() {
+  const v = {
+    age: document.getElementById('tr-age').value,
+    sbp: document.getElementById('tr-sbp').value,
+    dbp: document.getElementById('tr-dbp').value,
+    hr: document.getElementById('tr-hr').value,
+    spo2: document.getElementById('tr-spo2').value,
+    rr: document.getElementById('tr-rr').value,
+    temp: document.getElementById('tr-temp').value,
+    wbc: document.getElementById('tr-wbc').value,
+    ecg: document.getElementById('tr-ecg').value,
+    symptoms: document.getElementById('tr-symptoms').value,
+    history: document.getElementById('tr-history').value,
+  };
+
+  const result = triageScore(v);
+  const assignedDoc = assignDoctor(result.specialty, result.severity);
+  const panel = document.getElementById('triage-result-panel');
+
+  const flagsHtml = result.flags.length
+    ? result.flags.map(f => `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--red)">! </span>${f}</div>`).join('')
+    : `<div style="font-size:12px;color:var(--success)">âœ“ No critical flags detected</div>`;
+
+  const docHtml = assignedDoc ? `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--panel);border-radius:8px;margin-top:12px">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:16px;flex-shrink:0">${assignedDoc.name.charAt(0)}</div>
+      <div>
+        <div style="font-weight:700">${assignedDoc.name}</div>
+        <div style="font-size:12px;color:var(--text-muted)">${assignedDoc.specialty||assignedDoc.department||'General Medicine'}</div>
+        <div style="font-size:11px;color:var(--teal);margin-top:2px">âœ“ Recommended Assignment</div>
+      </div>
+    </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">No doctors available in system.</div>`;
+
+  panel.innerHTML = `
+    <div class="card" style="border:2px solid ${result.color}">
+      <div class="card-header" style="background:${result.color};color:white">
+        <h3>${result.icon} Triage Result</h3>
+        <span style="font-family:var(--mono);font-size:13px">Score: ${result.score}</span>
+      </div>
+      <div class="card-body">
+        <div style="text-align:center;padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:16px">
+          <div style="font-size:36px;font-weight:900;color:${result.color}">${result.severity}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Severity Level</div>
+        </div>
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Recommended Specialty</div>
+          <div style="font-size:18px;font-weight:700;color:var(--navy)">ðŸ¥ ${result.specialty}</div>
+        </div>
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Clinical Flags</div>
+          ${flagsHtml}
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Assigned Doctor</div>
+          ${docHtml}
+        </div>
+        <button class="btn btn-primary w-full" style="justify-content:center;margin-top:16px" onclick="admitFromTriage('${result.specialty}','${assignedDoc?.id||''}','${result.severity}')">
+          âž• Admit Patient with This Assignment
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function admitFromTriage(specialty, docId, severity) {
+  setNav('admit');
+  renderMain();
+  setTimeout(() => {
+    const docSel = document.getElementById('admit-doctor');
+    if (docSel && docId) docSel.value = docId;
+    showToast(`Triage: ${severity} — ${specialty} specialist pre-selected`, 'warn');
+  }, 300);
+}
+
+// PATIENT AI MODULE — Report Interpreter & Lifestyle Coach
+
+const GROQ_API_KEY = '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';
+
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+
+
+async function callGroq(prompt) {
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+
+    method: 'POST',
+
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_API_KEY },
+
+    body: JSON.stringify({
+
+      model: GROQ_MODEL,
+
+      messages: [{ role: 'user', content: prompt }],
+
+      temperature: 0.4,
+
+      max_tokens: 2048
+
+    })
+
+  });
+
+  const data = await res.json();
+
+  if (data.error) throw new Error(data.error.message);
+
+  return data.choices?.[0]?.message?.content || 'No response from AI.';
+
+}
+
+
+
+async function callGroqVision(prompt, imageBase64, mimeType) {
+
+  // Groq vision: encode image as base64 url
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+
+    method: 'POST',
+
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_API_KEY },
+
+    body: JSON.stringify({
+
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+
+      messages: [{
+
+        role: 'user',
+
+        content: [
+
+          { type: 'text', text: prompt },
+
+          { type: 'image_url', image_url: { url: 'data:' + mimeType + ';base64,' + imageBase64 } }
+
+        ]
+
+      }],
+
+      temperature: 0.4,
+
+      max_tokens: 2048
+
+    })
+
+  });
+
+  const data = await res.json();
+
+  if (data.error) throw new Error(data.error.message);
+
+  return data.choices?.[0]?.message?.content || 'No response from AI.';
+
+}
+
+function renderPatientAIPage() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="section-title">🩻 Patient AI — Report Interpreter & Lifestyle Coach</div>
+    <div class="section-sub">Upload a medical report (PDF or paste text) — AI will explain it in plain language and create a personalised health plan.</div>
+
+    <div class="grid-2" style="gap:20px;align-items:start">
+      <div>
+        <div class="card">
+          <div class="card-header"><h3>📎„ Upload / Paste Report</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label">Patient Name (optional)</label>
+              <input class="form-control" id="pai-name" placeholder="e.g. Rahul Sharma">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Age & Gender</label>
+              <div class="form-row">
+                <input class="form-control" id="pai-age" type="number" placeholder="Age">
+                <select class="form-control" id="pai-gender">
+                  <option>Male</option><option>Female</option><option>Other</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Upload Report (PDF / Image)</label>
+              <div id="pai-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:all 0.15s;background:var(--panel)"
+                onclick="document.getElementById('pai-file-input').click()"
+                ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+                ondragleave="this.style.borderColor='var(--border)'"
+                ondrop="handlePAIFileDrop(event)">
+                <div style="font-size:32px">📎Ž</div>
+                <div style="font-size:13px;font-weight:600;margin-top:6px">Drop file here or click to browse</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px">PDF, JPG, PNG supported</div>
+              </div>
+              <input type="file" id="pai-file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handlePAIFileSelect(event)">
+              <div id="pai-file-name" style="font-size:12px;color:var(--teal);margin-top:6px;display:none"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">— or paste report text —</label>
+              <textarea class="form-control" id="pai-text" rows="6" placeholder="Paste lab values, doctor notes, or any medical report text here...&#10;&#10;e.g.&#10;Haemoglobin: 9.2 g/dL (Low)&#10;WBC: 11,500 /ÂµL (High)&#10;LDL: 145 mg/dL&#10;Vitamin B12: 180 pg/mL (Low)"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Known Conditions / Medications</label>
+              <input class="form-control" id="pai-conditions" placeholder="e.g. Type 2 Diabetes, Metformin 500mg">
+            </div>
+            <button class="btn btn-primary w-full" style="justify-content:center" onclick="runPatientAI()" id="pai-run-btn">
+              🤖 Analyse with AI
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pai-result-panel">
+        <div class="card" style="border:2px dashed var(--border);background:var(--panel)">
+          <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+            <div style="font-size:48px;margin-bottom:12px">🤖</div>
+            <div style="font-weight:600">AI analysis will appear here</div>
+            <div style="font-size:12px;margin-top:6px">Upload a report or paste text, then click Analyse</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function handlePAIFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('pai-drop-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file) processPAIFile(file);
+}
+
+function handlePAIFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processPAIFile(file);
+}
+
+async function processPAIFile(file) {
+
+  const nameEl = document.getElementById('pai-file-name');
+
+  nameEl.textContent = '\uD83D\uDCCE ' + file.name;
+
+  nameEl.style.display = 'block';
+
+  window._paiImageData = null;
+  window._paiPdfPages = null;
+
+  window._paiPdfPages = null;
+
+
+
+  if (file.type === 'application/pdf') {
+
+    nameEl.textContent = '\u23F3 Rendering PDF pages...';
+
+    try {
+
+      const arrayBuffer = await file.arrayBuffer();
+
+      if (!window.pdfjsLib) {
+
+        await new Promise((resolve, reject) => {
+
+          const s = document.createElement('script');
+
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+
+          s.onload = resolve; s.onerror = reject;
+
+          document.head.appendChild(s);
+
+        });
+
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+      }
+
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      const maxPages = Math.min(pdf.numPages, 3);
+
+      const pages = [];
+
+      for (let i = 1; i <= maxPages; i++) {
+
+        const page = await pdf.getPage(i);
+
+        const viewport = page.getViewport({ scale: 1.2 });
+
+        const canvas = document.createElement('canvas');
+
+        canvas.width = viewport.width;
+
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+        pages.push(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
+
+      }
+
+      window._paiPdfPages = pages;
+
+      nameEl.textContent = '\u2705 ' + file.name + ' (' + maxPages + ' page' + (maxPages > 1 ? 's' : '') + ' ready)';
+
+      showToast('PDF rendered \u2014 ' + maxPages + ' page(s) ready for AI analysis', 'info');
+
+    } catch(e) {
+
+      nameEl.textContent = '\u26A0 PDF render failed \u2014 please paste text manually';
+
+      showToast('PDF render error: ' + e.message, 'error');
+
+    }
+
+  } else if (file.type.startsWith('image/')) {
+
+    const reader = new FileReader();
+
+    reader.onload = function(ev) {
+
+      window._paiImageData = ev.target.result;
+
+      showToast('Image loaded \u2014 ready for AI analysis', 'info');
+
+    };
+
+    reader.readAsDataURL(file);
+
+  }
+
+}
+
+async function runPatientAI() {
+  const name = document.getElementById('pai-name').value || 'Patient';
+  const age = document.getElementById('pai-age').value || 'Unknown';
+  const gender = document.getElementById('pai-gender').value;
+  const reportText = document.getElementById('pai-text').value.trim();
+  const conditions = document.getElementById('pai-conditions').value;
+  const panel = document.getElementById('pai-result-panel');
+  const btn = document.getElementById('pai-run-btn');
+
+  if (!reportText && !window._paiImageData && !window._paiPdfPages) {
+    showToast('Please paste report text or upload an image', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'â³ Analysing...';
+  panel.innerHTML = `
+    <div class="card">
+      <div class="card-body" style="text-align:center;padding:40px">
+        <div style="font-size:36px;margin-bottom:12px;animation:spin 1s linear infinite;display:inline-block">!™ï¸</div>
+        <div style="font-weight:600;margin-top:8px">AI is analysing your report...</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">This may take 10â€“20 seconds</div>
+      </div>
+    </div>
+  `;
+
+  const prompt = `You are a medical AI assistant. Analyse the following medical report for a ${age}-year-old ${gender} patient named ${name}.
+${conditions ? `Known conditions/medications: ${conditions}` : ''}
+
+MEDICAL REPORT:
+${reportText || '[IMAGE_REPORT_PLACEHOLDER]'}
+
+Please provide a structured response in the following format:
+
+## 📎Š Report Summary
+List each test/value found, its result, normal range, and status (Normal/Low/High/Critical).
+
+## ðŸš¨ Red Flags
+List any values or findings that need immediate attention. If none, say "No critical red flags."
+
+## ðŸ’¬ Plain Language Explanation
+Explain what the report means in simple, non-medical language that the patient can understand.
+
+## !¡ Urgent Action Plan
+1. Immediate steps the patient should take
+2. Supplements or foods to address deficiencies
+3. Warning signs to watch for
+4. When to visit a doctor (urgency level)
+
+## ðŸŒ¿ 7-Day Lifestyle Blueprint
+**Daily Diet:** What to eat and avoid
+**Hydration:** Water intake recommendations
+**Sleep:** Sleep hygiene tips
+**Exercise:** Safe exercise recommendations
+**Sun Exposure:** Vitamin D guidance
+**Stress Reduction:** Practical stress management tips
+
+Keep the tone warm, clear, and supportive. Use simple language.`;
+
+  try {
+    let aiResponse;
+
+    if (window._paiPdfPages && window._paiPdfPages.length > 0) {
+
+      // PDF: send pages one by one to vision, combine results
+
+      const pagePrompts = [];
+
+      for (let pi = 0; pi < window._paiPdfPages.length; pi++) {
+
+        pagePrompts.push(callGroqVision('Extract all medical values, test names, results, and any clinical notes from this lab report page. Return raw extracted text only.', window._paiPdfPages[pi], 'image/jpeg'));
+
+      }
+
+      const pageTexts = await Promise.all(pagePrompts);
+
+      const extractedText = pageTexts.join('\n\n');
+
+      const fullPrompt = prompt.replace('[IMAGE_REPORT_PLACEHOLDER]', extractedText);
+
+      aiResponse = await callGroq(fullPrompt);
+
+    } else if (window._paiImageData) {
+
+      const base64 = window._paiImageData.split(',')[1];
+
+      const mimeType = window._paiImageData.split(';')[0].split(':')[1];
+
+      // Step 1: OCR the image
+
+      const ocrText = await callGroqVision('You are a medical OCR assistant. Read this medical report image carefully and extract ALL text exactly as it appears — every test name, value, unit, reference range, and any notes. Output the raw extracted text only, nothing else.', base64, mimeType);
+
+      // Step 2: analyse the extracted text
+
+      const fullPrompt = prompt.replace('[IMAGE_REPORT_PLACEHOLDER]', ocrText);
+
+      aiResponse = await callGroq(fullPrompt);
+    } else {
+
+      aiResponse = await callGroq(prompt);
+
+    }
+
+    // placeholder to keep structure
+
+    if (false) {
+
+      // Demo mode
+      // Demo mode — generate mock response
+      aiResponse = generateMockAIResponse(reportText, name, age, gender);
+    }
+
+    renderAIResult(panel, aiResponse, name);
+  } catch(e) {
+    panel.innerHTML = `<div class="card"><div class="card-body"><div style="color:var(--red);font-weight:600">!  AI Error</div><div style="font-size:12px;margin-top:8px">${e.message}</div><div style="font-size:12px;color:var(--text-muted);margin-top:8px">Make sure your Gemini API key is configured. In demo mode, a sample analysis is shown.</div></div></div>`;
+    showToast('AI error: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🤖 Analyse with AI';
+  window._paiImageData = null;
+}
+
+function generateMockAIResponse(text, name, age, gender) {
+  // Parse common lab values from text for a realistic demo
+  const lines = text.split('\n').filter(l => l.trim());
+  const parsed = lines.map(l => {
+    const m = l.match(/([A-Za-z\s\d]+):\s*([\d.]+)\s*([a-zA-Z/%Âµ]*)/);
+    if (m) return { name: m[1].trim(), value: m[2], unit: m[3] };
+    return null;
+  }).filter(Boolean);
+
+  const tableRows = parsed.length ? parsed.map(p => `| ${p.name} | ${p.value} ${p.unit} | — | Review needed |`).join('\n') : '| No structured values detected | — | — | Paste text for analysis |';
+
+  return `## 📎Š Report Summary
+
+| Test | Result | Normal Range | Status |
+|------|--------|--------------|--------|
+${tableRows}
+
+## ðŸš¨ Red Flags
+
+Based on the provided information, please consult your doctor for a full interpretation. Common flags to watch: Haemoglobin < 12 g/dL, WBC > 11,000, LDL > 130 mg/dL, Vitamin B12 < 200 pg/mL.
+
+## ðŸ’¬ Plain Language Explanation
+
+Your report contains several health markers that your doctor has measured. Think of these like a dashboard for your body — some numbers are in the green zone (normal), and some may need attention. The important thing is not to panic — most values can be improved with the right lifestyle changes and, where needed, medication.
+
+## !¡ Urgent Action Plan
+
+1. **Immediate steps:** Share this report with your primary care doctor within the next 7 days.
+2. **Nutrition:** If iron or B12 is low, increase leafy greens, eggs, and lean meat. Consider a B-complex supplement.
+3. **Warning signs:** Seek emergency care if you experience chest pain, severe breathlessness, or fainting.
+4. **Doctor visit:** Schedule a follow-up within 1 week for any flagged values.
+
+## ðŸŒ¿ 7-Day Lifestyle Blueprint
+
+**Daily Diet:** Focus on whole grains, vegetables, lean protein, and fruits. Avoid processed foods, excess salt, and sugar.
+
+**Hydration:** Drink 2.5â€“3 litres of water daily. Start your morning with a glass of warm water.
+
+**Sleep:** Aim for 7â€“8 hours. Maintain a consistent sleep schedule. Avoid screens 1 hour before bed.
+
+**Exercise:** 30 minutes of moderate walking daily. Avoid strenuous exercise if any critical values are flagged.
+
+**Sun Exposure:** 15â€“20 minutes of morning sunlight (before 10 AM) for natural Vitamin D synthesis.
+
+**Stress Reduction:** Practice 10 minutes of deep breathing or meditation daily. Journaling and social connection also help significantly.
+
+---
+*!  This is a demo analysis. Configure your Gemini API key for real AI-powered interpretation.*`;
+}
+
+function renderAIResult(panel, markdown, name) {
+  // Convert markdown to HTML (basic)
+  let html = markdown
+    .replace(/^## (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--navy);margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--border)">$1</h3>')
+    .replace(/^\*\*(.+?)\*\*(.*)$/gm, '<div style="margin-bottom:6px"><strong>$1</strong>$2</div>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\| (.+) \|$/gm, (m) => {
+      const cells = m.split('|').filter(c => c.trim() && !c.match(/^[-\s]+$/));
+      if (!cells.length) return '';
+      return '<tr>' + cells.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${c.trim()}</td>`).join('') + '</tr>';
+    })
+    .replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px"><span style="font-weight:700;color:var(--teal);min-width:18px">$1.</span><span>$2</span></div>')
+    .replace(/^- (.+)$/gm, '<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:var(--teal)">â€¢</span><span>$1</span></div>')
+    .replace(/\n\n/g, '<br>')
+    .replace(/---/g, '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">');
+
+  // Wrap table rows
+  html = html.replace(/(<tr>.*<\/tr>\s*)+/gs, (m) => `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:12px">${m}</table></div>`);
+
+  panel.innerHTML = `
+    <div class="card">
+      <div class="card-header" style="background:var(--navy);color:white">
+        <h3>🤖 AI Analysis — ${name}</h3>
+        <button onclick="printAIReport()" class="btn btn-ghost btn-sm">ðŸ–¨ Print</button>
+      </div>
+      <div class="card-body" id="ai-report-content" style="line-height:1.7;font-size:13px">
+        ${html}
+      </div>
+    </div>
+  `;
+}
+
+function printAIReport() {
+  const content = document.getElementById('ai-report-content');
+  if (!content) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>AI Medical Report</title>
+    <style>body{font-family:'DM Sans',sans-serif;padding:32px;max-width:700px;margin:0 auto;color:#1A2332;line-height:1.7}
+    h3{font-size:15px;font-weight:700;border-bottom:2px solid #CBD5E1;padding-bottom:6px;margin:20px 0 10px}
+    table{width:100%;border-collapse:collapse}td{padding:6px 10px;border-bottom:1px solid #CBD5E1;font-size:12px}
+    @media print{@page{margin:1.5cm}}</style>
+    </head><body>${content.innerHTML}
+    <script>window.onload=function(){window.print();}<\/script></body></html>`);
+  win.document.close();
+}
+
+// Spin animation for loading
+const spinStyle = document.createElement('style');
+spinStyle.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(spinStyle);
+
+// INIT — startup() is called by DOMContentLoaded listener above
+// startup() shows login or loads live data then calls renderAll()
+</script>
+
+<script>
+
+function switchLoginTab(tab) {
+  const isPatient = tab === 'patient';
+  document.getElementById('login-hospital-form').style.display = isPatient ? 'none' : 'block';
+  document.getElementById('login-patient-form').style.display  = isPatient ? 'block' : 'none';
+  document.getElementById('tab-hospital').style.background = isPatient ? 'white' : 'var(--navy)';
+  document.getElementById('tab-hospital').style.color = isPatient ? 'var(--text-muted)' : 'white';
+  document.getElementById('tab-patient').style.background = isPatient ? 'var(--teal)' : 'white';
+  document.getElementById('tab-patient').style.color = isPatient ? 'white' : 'var(--text-muted)';
+}
+
+function patientLogin() {
+  const email = document.getElementById('patient-email').value.trim() || 'patient@nurselink.in';
+  // Store patient identity
+  window._patientUser = {
+    name: email.split('@')[0].replace(/\./g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
+    email: email
+  };
+  IS_LIVE = false;
+  S.currentRole = 'Patient';
+  showApp(false);
+  document.getElementById('demo-badge').style.display = 'none';
+  renderAll();
+}
+
+function renderPatientRxPage() {
+  const main = document.getElementById('main');
+  // Collect all prescriptions across all patients for demo
+  const allRx = [];
+  S.patients.forEach(p => {
+    (S.prescriptions[p.id] || []).forEach(rx => {
+      allRx.push({ ...rx, patientName: p.name, patientId: p.id });
+    });
+  });
+
+  if (!allRx.length) {
+    main.innerHTML = `
+      <div class="section-title">💊 My Prescriptions</div>
+      <div class="section-sub">Medications prescribed by your doctor</div>
+      <div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+        <div style="font-size:48px;margin-bottom:12px">💊</div>
+        <div style="font-weight:600">No prescriptions on record</div>
+        <div style="font-size:12px;margin-top:6px">Your doctor's prescriptions will appear here</div>
+      </div></div>`;
+    return;
+  }
+
+  const activeRx = allRx.filter(r => r.status === 'active');
+  const pastRx   = allRx.filter(r => r.status !== 'active');
+
+  const rxCard = (rx) => {
+    const statusColor = rx.status === 'active' ? 'var(--success)' : 'var(--text-muted)';
+    const statusBg    = rx.status === 'active' ? '#E8F5E9' : 'var(--panel)';
+    return `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;background:white">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-weight:700;font-size:15px">💊 ${rx.drug || rx.name || 'Medication'}</div>
+          <span style="background:${statusBg};color:${statusColor};font-size:10px;font-weight:700;padding:3px 10px;border-radius:10px;text-transform:uppercase">${rx.status || 'active'}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--text-muted)">
+          <div>Dose: <strong style="color:var(--text)">${rx.dose || '—'}</strong></div>
+          <div>Route: <strong style="color:var(--text)">${rx.route || 'Oral'}</strong></div>
+          <div>Frequency: <strong style="color:var(--text)">${rx.freq || rx.frequency || '—'}</strong></div>
+          <div>Duration: <strong style="color:var(--text)">${rx.duration || '—'}</strong></div>
+        </div>
+        ${rx.instructions ? `<div style="margin-top:8px;font-size:12px;background:#FFF8E1;padding:6px 10px;border-radius:6px;color:#F57C00">📋 ${rx.instructions}</div>` : ''}
+        <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Prescribed: ${rx.date || rx.time || 'Recently'} · Patient: ${rx.patientName}</div>
+      </div>`;
+  };
+
+  main.innerHTML = `
+    <div class="section-title">💊 My Prescriptions</div>
+    <div class="section-sub">Medications prescribed by your care team</div>
+    ${activeRx.length ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Active (${activeRx.length})</div>
+      ${activeRx.map(rxCard).join('')}` : ''}
+    ${pastRx.length ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 10px">Past Medications (${pastRx.length})</div>
+      ${pastRx.map(rxCard).join('')}` : ''}
+    <div style="margin-top:16px;padding:14px;background:#E3F2FD;border-radius:10px;font-size:12px;color:#1565C0;border-left:3px solid #1976D2">
+      ℹ️ Always take medications as prescribed. Do not stop or change doses without consulting your doctor.
+    </div>`;
+}
+
+function renderPatientDischargePage() {
+  const main = document.getElementById('main');
+  const discharged = S.patients.filter(p => p.status === 'Discharged');
+
+  if (!discharged.length) {
+    main.innerHTML = `
+      <div class="section-title">📄 Discharge Summary</div>
+      <div class="section-sub">Your hospital discharge records</div>
+      <div class="card"><div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+        <div style="font-size:48px;margin-bottom:12px">📄</div>
+        <div style="font-weight:600">No discharge records yet</div>
+        <div style="font-size:12px;margin-top:6px">Your discharge summary will appear here after you are discharged</div>
+      </div></div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="section-title">📄 Discharge Summary</div>
+    <div class="section-sub">Your hospital discharge records</div>
+    ${discharged.map(p => {
+      const doc = S.staff.find(s => String(s.id) === String(p.doctorId));
+      const rx  = (S.prescriptions[p.id] || []).filter(r => r.status === 'active');
+      const vitals = (S.vitals[p.id] || [])[0];
+      const notes = (S.consultNotes[p.id] || []);
+      const lastNote = notes[notes.length - 1];
+      return `
+        <div class="card mb-4" style="border:2px solid var(--teal)">
+          <div style="background:var(--navy);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-weight:700;font-size:16px">${p.name}</div>
+              <div style="font-size:12px;opacity:0.7">Age ${p.age} · ${p.gender === 'M' ? 'Male' : p.gender === 'F' ? 'Female' : 'Other'} · ${p.ehrId || p.id}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="background:var(--success);color:white;font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px">DISCHARGED</div>
+              <div style="font-size:11px;opacity:0.6;margin-top:4px">${p.dischargeDate || p.admitDate || 'Recently'}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="grid-2" style="gap:16px;margin-bottom:16px">
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Treating Doctor</div>
+                <div style="font-weight:600">${doc ? doc.name : 'Not assigned'}</div>
+                <div style="font-size:12px;color:var(--text-muted)">${doc ? (doc.specialty || doc.department || 'General') : ''}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Diagnosis</div>
+                <div style="font-weight:600">${p.diagnosis || p.chiefComplaint || 'See notes'}</div>
+              </div>
+            </div>
+
+            ${vitals ? `
+            <div style="margin-bottom:16px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Last Recorded Vitals</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                ${vitals.bp ? `<span class="vital-pill">BP: ${vitals.bp}</span>` : ''}
+                ${vitals.hr ? `<span class="vital-pill">HR: ${vitals.hr} bpm</span>` : ''}
+                ${vitals.spo2 ? `<span class="vital-pill">SpO2: ${vitals.spo2}%</span>` : ''}
+                ${vitals.temp ? `<span class="vital-pill">Temp: ${vitals.temp}°C</span>` : ''}
+              </div>
+            </div>` : ''}
+
+            ${rx.length ? `
+            <div style="margin-bottom:16px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Discharge Medications</div>
+              ${rx.map(r => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-radius:8px;margin-bottom:6px;font-size:13px">
+                  <span>💊</span>
+                  <span style="font-weight:600">${r.drug || r.name}</span>
+                  <span style="color:var(--text-muted)">${r.dose || ''} · ${r.freq || r.frequency || ''} · ${r.duration || ''}</span>
+                </div>`).join('')}
+            </div>` : ''}
+
+            ${lastNote ? `
+            <div style="margin-bottom:16px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Doctor's Notes</div>
+              <div style="background:var(--panel);border-radius:8px;padding:12px;font-size:13px;line-height:1.6">${lastNote.note || lastNote.text || lastNote}</div>
+            </div>` : ''}
+
+            <div style="background:#E8F5E9;border-radius:10px;padding:14px;font-size:12px;color:var(--success);border-left:3px solid var(--success)">
+               <strong>Follow-up:</strong> Please visit your doctor within 7 days of discharge. Take all medications as prescribed and return immediately if symptoms worsen.
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:16px">
+              <button class="btn btn-outline btn-sm" onclick="printPatientDischarge('${p.id}')">🖨 Print Summary</button>
+              <button class="btn btn-primary btn-sm" onclick="setNav('patientai');renderMain()">🤖 Ask AI about my report</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('')}`;
+}
+
+function printPatientDischarge(pid) {
+  const content = document.querySelector('.card[style*="border:2px solid var(--teal)"]');
+  if (!content) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Discharge Summary</title>
+    <style>body{font-family:'DM Sans',sans-serif;padding:32px;max-width:700px;margin:0 auto;color:#1A2332;line-height:1.6}
+    @media print{@page{margin:1.5cm}}</style></head>
+    <body>${content.outerHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+  win.document.close();
+}
+
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </body>
