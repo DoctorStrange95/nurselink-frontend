@@ -1638,6 +1638,7 @@ function renderOPDConsultation(id) {
         renderOPDConsultTab(id,p)}
     </div>
   `;
+  setTimeout(() => {}, 0);
 }
 
 function renderOPDHistoryTab(id, p) {
@@ -1743,7 +1744,41 @@ function renderOPDConsultTab(id, p) {
   const rxList = (S.prescriptions[id]||[]).filter(r=>r.status==='active');
   const vaccines = (S.vaccinations||{})[id]||[];
   return `
-    <!-- EXAMINE SECTION -->
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;margin-bottom:16px;align-items:start">
+      <div>
+        <div class="card">
+          <div class="card-header"><h3>📋 Chief Complaint & Vitals</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label">Chief Complaint *</label>
+              <textarea class="form-control" id="exam-cc" rows="2" placeholder="Main presenting complaints..." oninput="runOPDTriage()">${p.chiefComplaint||''}</textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Systolic BP</label><input class="form-control" id="opd-sbp" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="120" value="${p.triageVitals?.sbp||''}"></div>
+              <div class="form-group"><label class="form-label">Diastolic BP</label><input class="form-control" id="opd-dbp" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="80" value="${p.triageVitals?.dbp||''}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Heart Rate (bpm)</label><input class="form-control" id="opd-hr" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="72" value="${p.triageVitals?.hr||''}"></div>
+              <div class="form-group"><label class="form-label">SpO2 (%)</label><input class="form-control" id="opd-spo2" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="98" value="${p.triageVitals?.spo2||''}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Resp. Rate</label><input class="form-control" id="opd-rr" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="16" value="${p.triageVitals?.rr||''}"></div>
+              <div class="form-group"><label class="form-label">Temperature (°C)</label><input class="form-control" id="opd-temp" type="number" oninput="runOPDTriage()" onchange="runOPDTriage()" placeholder="37.0" step="0.1" value="${p.triageVitals?.temp||''}"></div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="runOPDTriage()">🧠 Run AI Triage</button>
+          </div>
+        </div>
+      </div>
+      <div id="opd-triage-panel" style="position:sticky;top:80px">
+        <div style="border:2px solid #e2e8f0;border-radius:10px;overflow:hidden">
+          <div style="background:#1A2332;color:white;padding:10px 14px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
+          <div style="padding:16px;text-align:center;color:#94a3b8">
+            <div style="font-size:32px;margin-bottom:8px">🩺</div>
+            <div style="font-size:12px">Fill vitals &amp; click Run AI Triage</div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="card mb-3">
       <div class="card-header"><h3>🩺 Examination</h3></div>
       <div class="card-body">
@@ -1771,14 +1806,12 @@ function renderOPDConsultTab(id, p) {
         </div>
       </div>
     </div>
-
-    <!-- PRESCRIBE SECTION -->
     <div class="card mb-3">
       <div class="card-header">
         <h3>💊 Prescription</h3>
         <button class="btn btn-primary btn-sm" onclick="showAddMedModal('${id}')">+ Add Drug</button>
       </div>
-      <div class="card-body" ${rxList.length===0?'':'style="padding:0"'}>
+      <div class="card-body" ${rxList.length===0?'':' style="padding:0"'}>
         ${rxList.length===0 ? '<div class="text-muted">No drugs added yet.</div>' :
           `<table class="data-table">
             <thead><tr><th>Drug</th><th>Dose</th><th>Route</th><th>Freq</th><th>Duration</th><th></th></tr></thead>
@@ -1795,26 +1828,6 @@ function renderOPDConsultTab(id, p) {
           </table>`}
       </div>
     </div>
-
-    <div class="card mb-3">
-      <div class="card-header"><h3>💉 Vaccinations</h3><button class="btn btn-outline btn-sm" onclick="showAddVaccineModal('${id}')">+ Add</button></div>
-      <div class="card-body" ${vaccines.length===0?'':'style="padding:0"'}>
-        ${vaccines.length===0 ? '<div class="text-muted">No vaccinations ordered.</div>' :
-          `<table class="data-table">
-            <thead><tr><th>Vaccine</th><th>Dose</th><th>No.</th><th>Route</th><th>Given</th><th>Next Due</th><th></th></tr></thead>
-            <tbody>
-              ${vaccines.map((v,i)=>`<tr>
-                <td class="fw-600">${v.name}</td><td class="mono">${v.dose}</td>
-                <td style="font-size:11px">${v.doseNum||'—'}</td><td>${v.route}</td>
-                <td style="font-size:11px">${v.date||'—'}</td>
-                <td style="font-size:11px;color:${v.nextDate?'var(--amber)':'var(--text-muted)'}">${v.nextDate||'—'}</td>
-                <td><button onclick="removeVaccine('${id}',${i})" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>`}
-      </div>
-    </div>
-
     <div class="card mb-3">
       <div class="card-header"><h3>🔬 Investigations</h3><button class="btn btn-outline btn-sm" onclick="showOrderLabModal('${id}')">+ Order</button></div>
       <div class="card-body">
@@ -1825,7 +1838,6 @@ function renderOPDConsultTab(id, p) {
           </div>`).join('')}
       </div>
     </div>
-
     <div style="position:sticky;bottom:16px;z-index:10">
       <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="saveExamination('${id}');generateRx('${id}')">
         📄 Generate Prescription (Rx)
@@ -1834,8 +1846,151 @@ function renderOPDConsultTab(id, p) {
   `;
 }
 
+
 function renderOPDExamineTab(id, p) { return renderOPDConsultTab(id, p); }
 function renderOPDPrescribeTab(id, p) { return renderOPDConsultTab(id, p); }
+
+function opdAssignDoctor(docId) {
+  const p = S.patients.find(x => String(x.id) === String(S.activePatientId));
+  if (!p) return;
+  p.doctorId = docId;
+  if (S.IS_LIVE || window.IS_LIVE) apiPatch('/patients/' + p.id, { doctor_id: docId });
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  // Re-run triage to refresh the cards with new selection highlighted
+  runOPDTriage();
+  showToast('Doctor assigned ✓');
+}
+
+function runOPDTriage() {
+  const sbp  = document.getElementById('opd-sbp')?.value || '0';
+  const dbp  = document.getElementById('opd-dbp')?.value || '0';
+  const hr   = document.getElementById('opd-hr')?.value || '0';
+  const spo2 = document.getElementById('opd-spo2')?.value || '0';
+  const rr   = document.getElementById('opd-rr')?.value || '0';
+  const temp = document.getElementById('opd-temp')?.value || '0';
+  const cc   = document.getElementById('exam-cc')?.value || '';
+  const panel = document.getElementById('opd-triage-panel');
+  if (!panel) return;
+  const result = triageScore({ age: 30, sbp, dbp, hr, spo2, rr, temp, symptoms: cc });
+  const sc = result.severity==='CRITICAL'?'#e53e3e':result.severity==='HIGH'?'#dd6b20':result.severity==='MODERATE'?'#d69e2e':'#38a169';
+  const em = result.severity==='CRITICAL'?'🔴':result.severity==='HIGH'?'🟠':result.severity==='MODERATE'?'🟡':'🟢';
+
+  // Build doctor cards sorted by specialty match
+  const doctors = S.staff.filter(s => s.role === 'Doctor');
+  const recommended = assignDoctor(result.specialty, result.severity);
+  const currentPatient = S.patients.find(x => String(x.id) === String(S.activePatientId));
+  const colors = ['#00B4A6','#5C6BC0','#2E7D32','#F57C00','#C62828','#546E7A'];
+  const docCards = doctors.map((d, i) => {
+    const load = S.patients.filter(p => String(p.doctorId) === String(d.id) && p.status === 'Active').length;
+    const pct = Math.min(100, load * 12);
+    const isRec = recommended && String(d.id) === String(recommended.id);
+    const isAssigned = currentPatient && String(currentPatient.doctorId) === String(d.id);
+    const bg = colors[i % colors.length];
+    return `<div style="border:2px solid ${isAssigned ? '#00B4A6' : isRec ? '#94e4df' : '#e2e8f0'};border-radius:10px;padding:12px;background:${isAssigned ? '#E0F7FA' : 'white'};cursor:pointer;margin-bottom:8px" onclick="opdAssignDoctor('${d.id}')">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${d.name.charAt(0)}</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px">${d.name}</div>
+          <div style="font-size:11px;color:#64748b">${d.specialty||d.department||'General'}</div>
+        </div>
+        ${isAssigned ? `<span style="background:#00B4A6;color:white;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px">Assigned</span>` : isRec ? `<span style="background:#5C6BC0;color:white;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px">AI Pick</span>` : ''}
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px">Patients: <strong>${load}</strong></div>
+      <div style="height:4px;background:#e2e8f0;border-radius:2px"><div style="height:4px;background:${pct>70?'#e53e3e':pct>40?'#dd6b20':'#00B4A6'};border-radius:2px;width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="border:2px solid ${sc};border-radius:10px;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1A2332;color:white;padding:10px 14px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
+      <div style="padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:22px;font-weight:900;color:${sc}">${em} ${result.severity}</span>
+          <span style="font-family:monospace;font-size:20px;font-weight:700;color:${sc}">${result.score}</span>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#1A2332;margin-bottom:6px">🏥 ${result.specialty}</div>
+        ${result.flags.length
+          ? result.flags.slice(0,4).map(f=>`<div style="font-size:11px;color:#e53e3e;margin-top:3px">⚠ ${f}</div>`).join('')
+          : `<div style="font-size:11px;color:#38a169">✓ No critical flags</div>`}
+      </div>
+    </div>
+    <div style="border:2px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1A2332;color:white;padding:10px 14px;font-weight:700;font-size:13px">👨‍⚕️ Assign Doctor</div>
+      <div style="padding:12px">${docCards}</div>
+    </div>`;
+}
+
+function opdLiveTriageUpdate(id) {
+  const pid = id || S.activePatientId;
+  const p = S.patients.find(x=>String(x.id)===String(pid));
+  if (!p) return;
+
+  const sbpEl  = document.getElementById('opd-sbp');
+  const dbpEl  = document.getElementById('opd-dbp');
+  const hrEl   = document.getElementById('opd-hr');
+  const spo2El = document.getElementById('opd-spo2');
+  const rrEl   = document.getElementById('opd-rr');
+  const tempEl = document.getElementById('opd-temp');
+  const ccEl   = document.getElementById('exam-cc');
+
+  // If inputs don't exist in DOM yet, bail
+  if (!sbpEl) return;
+
+  const sbp  = sbpEl.value;
+  const dbp  = dbpEl?.value || '';
+  const hr   = hrEl?.value || '';
+  const spo2 = spo2El?.value || '';
+  const rr   = rrEl?.value || '';
+  const temp = tempEl?.value || '';
+  const cc   = ccEl?.value || '';
+
+  p.chiefComplaint = cc;
+  p.triageVitals = { sbp, dbp, hr, spo2, rr, temp };
+
+  const panel = document.getElementById('opd-triage-panel');
+  if (!panel) return;
+
+  const hasVitals = parseFloat(sbp) > 0 || parseFloat(hr) > 0 || parseFloat(spo2) > 0 || parseFloat(rr) > 0 || parseFloat(temp) > 0;
+
+  if (!hasVitals) {
+    panel.innerHTML = `
+      <div style="border:2px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="background:#1A2332;color:white;padding:10px 14px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
+        <div style="padding:16px;text-align:center;color:#94a3b8">
+          <div style="font-size:32px;margin-bottom:8px">🩺</div>
+          <div style="font-size:12px">Enter vitals to see triage score</div>
+        </div>
+      </div>`;
+    p.triageResult = null;
+    try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+    return;
+  }
+
+  let result;
+  try { result = triageScore({ age: p.age, sbp, dbp, hr, spo2, rr, temp, symptoms: cc }); }
+  catch(e) { return; }
+
+  p.triageResult = result;
+  try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+
+  const sc = result.severity === 'CRITICAL' ? '#e53e3e' : result.severity === 'HIGH' ? '#dd6b20' : result.severity === 'MODERATE' ? '#d69e2e' : '#38a169';
+  const em = result.severity === 'CRITICAL' ? '🔴' : result.severity === 'HIGH' ? '🟠' : result.severity === 'MODERATE' ? '🟡' : '🟢';
+
+  panel.innerHTML = `
+    <div style="border:2px solid ${sc};border-radius:10px;overflow:hidden">
+      <div style="background:#1A2332;color:white;padding:10px 14px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
+      <div style="padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:22px;font-weight:900;color:${sc}">${em} ${result.severity}</span>
+          <span style="font-family:monospace;font-size:20px;font-weight:700;color:${sc}">${result.score}</span>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#1A2332;margin-bottom:6px">🏥 ${result.specialty}</div>
+        ${result.flags.length
+          ? result.flags.slice(0,4).map(f=>`<div style="font-size:11px;color:#e53e3e;margin-top:3px">⚠ ${f}</div>`).join('')
+          : `<div style="font-size:11px;color:#38a169">✓ No critical flags</div>`}
+      </div>
+    </div>`;
+}
 
 function setDiagType(type) {
   ['Working','Provisional','Final'].forEach(t=>{
@@ -2424,9 +2579,23 @@ function renderOverviewTab(id, p) {
         <div class="card-header"><h3>Clinical Summary</h3></div>
         <div class="card-body">
           <div class="form-label">Chief Complaint</div>
-          <div style="font-size:13px;margin-bottom:12px">${p.chiefComplaint}</div>
+          <div style="font-size:13px;background:var(--panel);border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.5">${p.chiefComplaint || '—'}</div>
+
+          ${p.triageResult ? `
+          <div style="border:2px solid ${p.triageResult.color};border-radius:8px;padding:12px;margin-bottom:12px;background:white">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🧠 AI Triage Score</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div style="font-size:20px;font-weight:900;color:${p.triageResult.color}">${p.triageResult.icon} ${p.triageResult.severity}</div>
+              <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${p.triageResult.color}">${p.triageResult.score}</div>
+            </div>
+            <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px">🏥 ${p.triageResult.specialty}</div>
+            ${p.triageResult.flags.length
+              ? p.triageResult.flags.slice(0,4).map(f=>`<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${f}</div>`).join('')
+              : `<div style="font-size:11px;color:var(--success)">✓ No critical flags</div>`}
+          </div>` : ''}
+
           <div class="form-label">Diagnosis</div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${p.diagnosis}</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${p.diagnosis || '—'}</div>
           <div style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">ICD-10: ${p.icd}</div>
           <hr class="divider">
           <div class="form-label">Care Team</div>
@@ -3264,6 +3433,10 @@ function showRecordVitalsModal(patientId) {
   showModal(`<div class="modal" style="max-width:640px">
     <div class="modal-header"><h2>📊 Record Vitals — ${p.name}</h2><button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Chief Complaint</label>
+        <textarea class="form-control" id="v-cc" rows="2" placeholder="Main presenting complaints...">${p.chiefComplaint||''}</textarea>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">BP Systolic (mmHg) *</label>
@@ -3350,6 +3523,15 @@ async function submitVitals(pid) {
   S.vitals[pid].unshift(vital);
   checkAlerts(pid, vital);
   const p = S.patients.find(x=>x.id===pid);
+
+  // Compute and store AI triage score on the patient
+  if (p) {
+    const tr = triageScore({ age: p.age, sbp: bps, dbp: bpd, hr: pulse, spo2, rr, temp, symptoms: p.chiefComplaint });
+    p.triageResult = tr;
+    // Also capture chief complaint if entered in the modal
+    const ccInput = document.getElementById('v-cc');
+    if (ccInput && ccInput.value.trim()) p.chiefComplaint = ccInput.value.trim();
+  }
   S.notifications.unshift({ id:'N'+Date.now(), role:'Doctor', title:'New Vitals', body:`${p?.name} — BP ${bps}/${bpd}, SpO2 ${spo2}%`, time:ts(), read:false });
   closeModal();
 
@@ -3888,6 +4070,9 @@ async function ackAlert(id) {
 function renderNotifBadge() {
   const myNotifs = S.notifications.filter(n=>n.role===S.currentRole&&!n.read);
   const badge = document.getElementById('notif-badge');
+  const btn = document.getElementById('notif-btn');
+  // Hide notification bell entirely for Patient role — staff notifications are not relevant
+  if (btn) btn.style.display = S.currentRole === 'Patient' ? 'none' : '';
   if (myNotifs.length > 0) {
     badge.style.display = 'inline';
     badge.textContent = myNotifs.length;
@@ -4051,8 +4236,6 @@ function renderAdmitForm() {
 
             <div class="form-group"><label class="form-label">BMI (auto-calculated)</label><input class="form-control" id="ad-bmi" readonly placeholder="Enter height & weight"></div>
 
-            <div class="form-group"><label class="form-label">Chief Complaint *</label><textarea class="form-control" id="ad-cc" rows="2" placeholder="Main presenting complaints" oninput="liveTriageUpdate()"></textarea></div>
-
             <div class="form-row">
 
               <div class="form-group"><label class="form-label">Address</label><input class="form-control" id="ad-address" placeholder="Street / Area / Locality"></div>
@@ -4082,94 +4265,6 @@ function renderAdmitForm() {
           </div>
 
         </div>
-
-
-
-        <!-- AI Triage — Vitals -->
-
-        <div class="card mt-4">
-
-          <div class="card-header" style="background:var(--navy);color:white">
-
-            <h3>🧠 AI Triage — Vitals</h3>
-
-            <span style="font-size:11px;opacity:0.6">Updates doctor recommendation live</span>
-
-          </div>
-
-          <div class="card-body">
-
-            <div class="form-row">
-
-              <div class="form-group"><label class="form-label">Systolic BP</label><input class="form-control" id="ad-sbp" type="number" placeholder="120" oninput="liveTriageUpdate()"></div>
-
-              <div class="form-group"><label class="form-label">Diastolic BP</label><input class="form-control" id="ad-dbp" type="number" placeholder="80" oninput="liveTriageUpdate()"></div>
-
-            </div>
-
-            <div class="form-row">
-
-              <div class="form-group"><label class="form-label">Heart Rate (bpm)</label><input class="form-control" id="ad-hr" type="number" placeholder="72" oninput="liveTriageUpdate()"></div>
-
-              <div class="form-group"><label class="form-label">SpO2 (%)</label><input class="form-control" id="ad-spo2" type="number" placeholder="98" oninput="liveTriageUpdate()"></div>
-
-            </div>
-
-            <div class="form-row">
-
-              <div class="form-group"><label class="form-label">Resp. Rate</label><input class="form-control" id="ad-rr" type="number" placeholder="16" oninput="liveTriageUpdate()"></div>
-
-              <div class="form-group"><label class="form-label">Temperature (°C)</label><input class="form-control" id="ad-temp" type="number" placeholder="37.0" step="0.1" oninput="liveTriageUpdate()"></div>
-
-            </div>
-
-            <div class="form-row">
-
-              <div class="form-group"><label class="form-label">WBC (Ã—10Â³/ÂµL)</label><input class="form-control" id="ad-wbc" type="number" placeholder="7.5" step="0.1" oninput="liveTriageUpdate()"></div>
-
-              <div class="form-group"><label class="form-label">ECG Finding</label>
-
-                <select class="form-control" id="ad-ecg" onchange="liveTriageUpdate()">
-
-                  <option value="normal">Normal</option>
-
-                  <option value="stemi">STEMI</option>
-
-                  <option value="nstemi">NSTEMI / ACS</option>
-
-                  <option value="afib">Atrial Fibrillation</option>
-
-                  <option value="vt">Ventricular Tachycardia</option>
-
-                  <option value="other">Other Abnormal</option>
-
-                </select>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-
-
-        <!-- PRESCRIPTION -->
-
-        <div class="card mt-4">
-
-          <div class="card-header"><h3>Prescription <span style="font-weight:400;color:var(--text-muted)">(optional)</span></h3></div>
-
-          <div class="card-body">
-
-            <textarea class="form-control" id="ad-rx" rows="3" placeholder="e.g. Tab. Paracetamol 500mg Oral TDS Ã— 5 days"></textarea>
-
-          </div>
-
-        </div>
-
-
 
         <!-- IPD ONLY -->
 
@@ -4292,23 +4387,6 @@ function renderAdmitForm() {
       <!-- RIGHT: TRIAGE RESULT + DOCTOR ASSIGNMENT -->
 
       <div style="position:sticky;top:80px">
-
-        <!-- Triage Score Card -->
-
-        <div id="admit-triage-card" style="border:2px solid var(--border);border-radius:10px;background:white;margin-bottom:16px;overflow:hidden">
-
-          <div style="background:var(--navy);color:white;padding:12px 16px;font-weight:700;font-size:13px">🧠 AI Triage Score</div>
-
-          <div id="admit-triage-body" style="padding:16px;text-align:center;color:var(--text-muted)">
-
-            <div style="font-size:32px;margin-bottom:8px">🩺</div>
-
-            <div style="font-size:12px">Enter vitals to see triage score</div>
-
-          </div>
-
-        </div>
-
 
 
         <!-- Doctor Assignment -->
@@ -4508,12 +4586,12 @@ async function submitAdmit() {
   const isIPD = document.getElementById('admit-mode-toggle')?.checked || false;
   const name = document.getElementById('ad-name').value.trim();
   const age = document.getElementById('ad-age').value;
-  const cc = document.getElementById('ad-cc').value.trim();
-  if (!name || !age || !cc) { alert('Name, Age and Chief Complaint are required.'); return; }
+  const cc = document.getElementById('ad-cc')?.value?.trim() || '';
+  if (!name || !age) { alert('Name and Age are required.'); return; }
 
   const diag = '';
   const icd = 'Z00';
-  const rx = document.getElementById('ad-rx').value.trim();
+  const rx = '';
   let pid = 'P'+Date.now();
   const ehrId = 'EHR-'+Math.floor(10000+Math.random()*90000);
 
@@ -4565,6 +4643,8 @@ async function submitAdmit() {
       member: document.getElementById('ad-ins-member')?.value.trim(),
       type: document.getElementById('ad-ins-type')?.value,
     } : null,
+    // Triage result will be captured after vitals are entered on page 2
+    triageResult: null,
   };
 
   S.patients.unshift(patient);
@@ -4850,6 +4930,7 @@ async function finalizeDischargeSummary(pid) {
   if (IS_LIVE) await apiPatch('/patients/' + pid + '/discharge', { condition: cond });
   showToast(`${p.name} discharged. Condition: ${cond}`);
   save();
+  renderAll();
 }
 
 // NURSE VIEW — VITALS PAGE
@@ -5287,7 +5368,7 @@ function showAssignDoctorModal(id) {
   </div>`);
 }
 
-function saveAssignDoctor(id) {
+async function saveAssignDoctor(id) {
   const p = S.patients.find(x=>x.id===id);
   if (!p) return;
   p.doctorId = document.getElementById('assign-doc').value;
@@ -5297,6 +5378,13 @@ function saveAssignDoctor(id) {
   closeModal();
   showToast(`Care team updated — ${doc?.name}${nurse?' + '+nurse.name:''}`);
   try { localStorage.setItem('NL_STATE_V3', JSON.stringify(S)); } catch(e) {}
+  // Sync doctor/nurse assignment to server
+  if (IS_LIVE) {
+    await apiPatch('/patients/' + id, {
+      doctor_id: p.doctorId || null,
+      nurse_id: p.nurseId || null
+    });
+  }
   renderIPDDetail(id);
 }
 
@@ -6964,6 +7052,11 @@ function renderQueuePage() {
   const main = document.getElementById('main');
   if (!S.opdQueue) S.opdQueue = [];
 
+  // Determine if a specific doctor is logged in
+  const myStaff = IS_LIVE && window._loggedInUser ? S.staff.find(s => String(s.id) === String(window._loggedInUser.id)) : null;
+  const isDoctor = myStaff?.role === 'Doctor';
+  const myDoctorId = isDoctor ? String(myStaff.id) : null;
+
   // Sync: ensure every unconsulted OPD patient is in the queue
   S.patients.filter(p=>p.status==='OPD').forEach(p => {
     const isConsulted = p.consulted || (S.prescriptions[p.id]||[]).length>0 || (S.consultNotes[p.id]||[]).length>0;
@@ -6975,19 +7068,28 @@ function renderQueuePage() {
         uhid: p.ehrId,
         cc: p.chiefComplaint || '',
         time: p.admitTime || '',
+        doctorId: p.doctorId ? String(p.doctorId) : null,
         status: 'Waiting'
       });
     }
   });
 
-  const waiting = S.opdQueue.filter(q=>q.status==='Waiting');
-  const called  = S.opdQueue.filter(q=>q.status==='Called');
-  const done    = S.opdQueue.filter(q=>q.status==='Done');
+  // Filter queue to current doctor's patients only (when logged in as a doctor)
+  const myQueue = myDoctorId
+    ? S.opdQueue.filter(q => {
+        const pt = S.patients.find(x => x.id === q.pid);
+        return pt && String(pt.doctorId) === myDoctorId;
+      })
+    : S.opdQueue;
+
+  const waiting = myQueue.filter(q=>q.status==='Waiting');
+  const called  = myQueue.filter(q=>q.status==='Called');
+  const done    = myQueue.filter(q=>q.status==='Done');
   main.innerHTML = `
     <div class="flex items-center justify-between mb-4">
       <div>
         <div class="section-title">OPD Queue</div>
-        <div class="section-sub">${waiting.length} waiting · ${called.length} with doctor · ${done.length} done today</div>
+        <div class="section-sub">${isDoctor ? `Dr. ${myStaff.name}'s queue — ` : ''}${waiting.length} waiting · ${called.length} with doctor · ${done.length} done today</div>
       </div>
       <button class="btn btn-primary" onclick="setNav('register')">➕ Register Patient</button>
     </div>
@@ -7136,8 +7238,7 @@ document.addEventListener('click', e => {
 
 // INIT — startup() is called by DOMContentLoaded listener above
 // startup() shows login or loads live data then calls renderAll()
-</script>
-<script>
+
 // AI TRIAGE ENGINE — Hospital Module
 
 function triageScore(v) {
@@ -8021,7 +8122,10 @@ function renderPatientRxPage() {
 
 function renderPatientDischargePage() {
   const main = document.getElementById('main');
-  const discharged = S.patients.filter(p => p.status === 'Discharged');
+  // Filter to only the logged-in patient's discharged records
+  const myEmail = window._patientUser?.email || '';
+  const discharged = S.patients.filter(p => p.status === 'Discharged' &&
+    (!myEmail || (p.email && p.email.toLowerCase() === myEmail.toLowerCase()) || !window._patientUser));
 
   if (!discharged.length) {
     main.innerHTML = `
