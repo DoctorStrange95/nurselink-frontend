@@ -1,5 +1,5 @@
 async function test() {
-  const API_BASE = 'https://nurselink-server.onrender.com/api';
+  const API_BASE = 'https://nurselink-frontend-8r6i.onrender.com';
   const res = await fetch(API_BASE + '/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
